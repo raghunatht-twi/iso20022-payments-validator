@@ -285,19 +285,29 @@ def _badge(passed: bool) -> str:
     )
 
 
-def _errors_html(errors: list[ValidationError]) -> str:
-    if not errors:
-        return '<td style="color:#888;font-style:italic;">—</td>'
-    # html.escape() prevents XSS from XML element values in error messages (LLM05)
-    items = "".join(f"<li>{html.escape(e.message)}</li>" for e in errors)
-    return f'<td><ol style="margin:0;padding-left:1.1rem;">{items}</ol></td>'
-
-
-def _suggestions_html(errors: list[ValidationError]) -> str:
-    if not errors:
-        return '<td style="color:#888;font-style:italic;">—</td>'
-    items = "".join(f"<li>{html.escape(e.suggestion)}</li>" for e in errors)
-    return f'<td><ol style="margin:0;padding-left:1.1rem;">{items}</ol></td>'
+def _comments_html(result: ValidationResult) -> str:
+    if result.passed:
+        return (
+            '<td style="color:var(--green);font-weight:500;">'
+            "All element names, values, and structure validated successfully against the schema."
+            "</td>"
+        )
+    error_items = "".join(
+        f"<li>{html.escape(e.message)}</li>" for e in result.errors
+    )
+    fix_items = "".join(
+        f"<li>{html.escape(e.suggestion)}</li>" for e in result.errors
+    )
+    return (
+        "<td>"
+        f'<ol style="margin:0 0 0.5rem;padding-left:1.1rem;">{error_items}</ol>'
+        "<details>"
+        '<summary style="cursor:pointer;color:var(--teal);font-weight:600;'
+        'font-size:0.85rem;user-select:none;">Suggested fixes</summary>'
+        f'<ol style="margin:0.5rem 0 0;padding-left:1.1rem;color:#333;">{fix_items}</ol>'
+        "</details>"
+        "</td>"
+    )
 
 
 def _summary_card(label: str, value: str | int, css_var: str) -> str:
@@ -334,8 +344,7 @@ def generate_report(
         f"<tr>"
         f"<td style='font-family:monospace;font-size:0.85rem;'>{html.escape(r.file_name)}</td>"
         f"<td style='text-align:center;'>{_badge(r.passed)}</td>"
-        f"{_errors_html(r.errors)}"
-        f"{_suggestions_html(r.errors)}"
+        f"{_comments_html(r)}"
         f"</tr>"
         for r in results
     )
@@ -384,6 +393,12 @@ def generate_report(
     tbody tr:hover {{ background: #d5dfe4; }}
     ol {{ list-style-position: outside; padding-left: 1.1rem; }}
     ol li {{ margin-bottom: 0.4rem; }}
+    details {{ margin-top: 0.4rem; }}
+    details[open] summary {{ margin-bottom: 0.4rem; }}
+    summary {{ list-style: none; }}
+    summary::-webkit-details-marker {{ display: none; }}
+    summary::before {{ content: '▶ '; font-size: 0.7rem; }}
+    details[open] summary::before {{ content: '▼ '; }}
     footer {{ text-align: center; font-size: 0.78rem; color: #888; padding: 2rem; border-top: 1px solid #ccc; margin-top: 1rem; }}
   </style>
 </head>
@@ -426,8 +441,7 @@ def generate_report(
           <tr>
             <th style="width:22%">File</th>
             <th style="width:8%;text-align:center">Status</th>
-            <th style="width:35%">Failure Reason(s)</th>
-            <th style="width:35%">Suggested Fix(es)</th>
+            <th style="width:70%">Comments</th>
           </tr>
         </thead>
         <tbody>
