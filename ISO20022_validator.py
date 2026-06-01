@@ -1,12 +1,14 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#   "lxml>=5.0",
+#   "lxml>=5.0,<6.0",
 # ]
 # ///
 """ISO 20022 XML message validator with Thoughtworks-branded HTML report output."""
 from __future__ import annotations
 
+import hashlib
+import html
 import re
 import sys
 from dataclasses import dataclass, field
@@ -21,7 +23,29 @@ SCHEMA_DIR = _BASE_DIR / "schema"
 TEST_DATA_DIR = _BASE_DIR / "test_data"
 REPORT_DIR = _BASE_DIR / "reports"
 
+# Resource limits (LLM10)
+_MAX_XML_SIZE_BYTES = 10 * 1024 * 1024
+_MAX_FILES = 500
+
+# Hardened XML parser — no external entities, no network, no oversized documents (LLM10)
+_SAFE_PARSER = etree.XMLParser(
+    resolve_entities=False,
+    no_network=True,
+    huge_tree=False,
+    load_dtd=False,
+)
+
+# Accepted ISO 20022 domain name format: four lowercase letters, optionally followed
+# by up to three dot-separated three-digit version components (e.g. "pain" or "pain.001.001.13")
+_DOMAIN_RE = re.compile(r"^[a-z]{4}(\.\d{3}){0,3}$")
+
 _NS_RE = re.compile(r"\{[^}]+\}")
+
+# SHA-256 of known-good schema files. Update here whenever a schema is intentionally
+# replaced, and regenerate via: sha256sum schema/<file> (LLM04)
+_SCHEMA_HASHES: dict[str, str] = {
+    "pain.001.001.13.xsd": "f6ab7c1763c0cf4e6f0fc61eb99e988fe1c243cc56a683ded9d25f71f6b305d9",
+}
 
 _DOMAIN_DESCRIPTIONS: dict[str, str] = {
     "pain": "Payments Initiation",
@@ -143,6 +167,15 @@ def _domain_label(domain: str) -> str:
     return _DOMAIN_DESCRIPTIONS.get(base, "ISO 20022 Message Domain")
 
 
+def _validate_domain(domain: str) -> None:
+    """Reject domain strings that are not valid ISO 20022 identifiers (LLM06)."""
+    if not _DOMAIN_RE.match(domain):
+        raise ValueError(
+            f"'{domain}' is not a valid ISO 20022 domain name. "
+            "Expected format: 'pain' or 'pain.001.001.13'."
+        )
+
+
 def find_schema(domain: str) -> Path:
     matches = list(SCHEMA_DIR.glob(f"{domain}*.xsd"))
     if not matches:
@@ -159,12 +192,25 @@ def find_schema(domain: str) -> Path:
 
 
 def load_schema(schema_path: Path) -> etree.XMLSchema:
-    doc = etree.parse(str(schema_path))
+    expected_hash = _SCHEMA_HASHES.get(schema_path.name)
+    if expected_hash is not None:
+        actual_hash = hashlib.sha256(schema_path.read_bytes()).hexdigest()
+        if actual_hash != expected_hash:
+            raise ValueError(
+                f"Schema integrity check failed for '{schema_path.name}'. "
+                "The file does not match its expected hash — it may have been modified."
+            )
+    doc = etree.parse(str(schema_path), _SAFE_PARSER)
     return etree.XMLSchema(doc)
 
 
 def find_test_files(domain: str) -> list[Path]:
     domain_dir = TEST_DATA_DIR / domain
+
+    # Guard against path traversal: resolved path must stay inside TEST_DATA_DIR (LLM06)
+    if not domain_dir.resolve().is_relative_to(TEST_DATA_DIR.resolve()):
+        raise ValueError("Domain resolves outside the test_data directory.")
+
     if not domain_dir.is_dir():
         raise FileNotFoundError(
             f"Test data directory '{domain_dir}' does not exist."
@@ -172,12 +218,33 @@ def find_test_files(domain: str) -> list[Path]:
     files = sorted(domain_dir.glob("*.xml"))
     if not files:
         raise FileNotFoundError(f"No XML test files found in '{domain_dir}'.")
+
+    # Enforce file count limit to prevent unbounded processing (LLM10)
+    if len(files) > _MAX_FILES:
+        raise ValueError(
+            f"Found {len(files)} XML files in '{domain_dir}' — "
+            f"limit is {_MAX_FILES}. Split the test set into smaller directories."
+        )
     return files
 
 
 def validate_file(xml_path: Path, schema: etree.XMLSchema) -> ValidationResult:
+    # Enforce file size limit before parsing (LLM10)
+    size = xml_path.stat().st_size
+    if size > _MAX_XML_SIZE_BYTES:
+        mb = size / (1024 * 1024)
+        return ValidationResult(
+            file_name=xml_path.name,
+            file_path=xml_path,
+            passed=False,
+            errors=[ValidationError(
+                message=f"File is {mb:.1f} MB — exceeds the {_MAX_XML_SIZE_BYTES // (1024*1024)} MB limit.",
+                suggestion="Split the XML into smaller files or reduce its content.",
+            )],
+        )
+
     try:
-        doc = etree.parse(str(xml_path))
+        doc = etree.parse(str(xml_path), _SAFE_PARSER)
     except etree.XMLSyntaxError as exc:
         return ValidationResult(
             file_name=xml_path.name,
@@ -221,14 +288,15 @@ def _badge(passed: bool) -> str:
 def _errors_html(errors: list[ValidationError]) -> str:
     if not errors:
         return '<td style="color:#888;font-style:italic;">—</td>'
-    items = "".join(f"<li>{e.message}</li>" for e in errors)
+    # html.escape() prevents XSS from XML element values in error messages (LLM05)
+    items = "".join(f"<li>{html.escape(e.message)}</li>" for e in errors)
     return f'<td><ol style="margin:0;padding-left:1.1rem;">{items}</ol></td>'
 
 
 def _suggestions_html(errors: list[ValidationError]) -> str:
     if not errors:
         return '<td style="color:#888;font-style:italic;">—</td>'
-    items = "".join(f"<li>{e.suggestion}</li>" for e in errors)
+    items = "".join(f"<li>{html.escape(e.suggestion)}</li>" for e in errors)
     return f'<td><ol style="margin:0;padding-left:1.1rem;">{items}</ol></td>'
 
 
@@ -258,9 +326,13 @@ def generate_report(
 
     css_vars = "\n".join(f"  --{k}: {v};" for k, v in _TW.items())
 
+    # Use project-relative paths to avoid disclosing host directory structure (LLM02)
+    schema_rel = schema_path.relative_to(_BASE_DIR)
+    domain_dir_rel = (TEST_DATA_DIR / domain).relative_to(_BASE_DIR)
+
     rows = "\n".join(
         f"<tr>"
-        f"<td style='font-family:monospace;font-size:0.85rem;'>{r.file_name}</td>"
+        f"<td style='font-family:monospace;font-size:0.85rem;'>{html.escape(r.file_name)}</td>"
         f"<td style='text-align:center;'>{_badge(r.passed)}</td>"
         f"{_errors_html(r.errors)}"
         f"{_suggestions_html(r.errors)}"
@@ -275,12 +347,12 @@ def generate_report(
         + _summary_card("Pass Rate", pass_rate, "--teal")
     )
 
-    html = f"""<!DOCTYPE html>
+    html_doc = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>ISO 20022 Validation — {domain}</title>
+  <title>ISO 20022 Validation — {html.escape(domain)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
@@ -296,15 +368,11 @@ def generate_report(
     article {{ max-width: 1000px; margin: 0 auto; padding: 3.5rem 4rem; }}
     section {{ margin-bottom: 2.8rem; }}
     h2 {{
-      font-family: 'Bitter', serif;
-      font-size: 1.2rem;
-      font-weight: 600;
-      color: var(--teal-dk);
-      border-bottom: 2px solid var(--teal-dk);
-      padding-bottom: 0.4rem;
-      margin-bottom: 1.2rem;
+      font-family: 'Bitter', serif; font-size: 1.2rem; font-weight: 600;
+      color: var(--teal-dk); border-bottom: 2px solid var(--teal-dk);
+      padding-bottom: 0.4rem; margin-bottom: 1.2rem;
     }}
-    .cards {{ display: flex; gap: 1rem; flex-wrap: wrap; }}
+    .cards {{ display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; }}
     dl {{ display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.5rem; font-size: 0.9rem; }}
     dt {{ font-weight: 600; color: var(--teal-dk); }}
     dd {{ color: #333; word-break: break-all; }}
@@ -337,13 +405,13 @@ def generate_report(
       <h2>Test Scope</h2>
       <dl>
         <dt>Domain</dt>
-        <dd>{domain.upper()} — {_domain_label(domain)}</dd>
+        <dd>{html.escape(domain.upper())} — {html.escape(_domain_label(domain))}</dd>
         <dt>Schema File</dt>
-        <dd>{schema_path.name}</dd>
+        <dd>{html.escape(schema_path.name)}</dd>
         <dt>Schema Path</dt>
-        <dd>{schema_path.resolve()}</dd>
+        <dd>{html.escape(str(schema_rel))}</dd>
         <dt>Test Data Directory</dt>
-        <dd>{(TEST_DATA_DIR / domain).resolve()}</dd>
+        <dd>{html.escape(str(domain_dir_rel))}</dd>
         <dt>Files Tested</dt>
         <dd>{total}</dd>
         <dt>Run Timestamp</dt>
@@ -373,7 +441,7 @@ def generate_report(
 </body>
 </html>"""
 
-    report_path.write_text(html, encoding="utf-8")
+    report_path.write_text(html_doc, encoding="utf-8")
     return report_path
 
 
@@ -386,6 +454,12 @@ def main() -> None:
     domain = sys.argv[1].strip().lower()
 
     try:
+        _validate_domain(domain)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
         schema_path = find_schema(domain)
     except (FileNotFoundError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -395,13 +469,13 @@ def main() -> None:
 
     try:
         schema = load_schema(schema_path)
-    except etree.XMLSchemaParseError as exc:
+    except (etree.XMLSchemaParseError, ValueError) as exc:
         print(f"Failed to load schema: {exc}", file=sys.stderr)
         sys.exit(1)
 
     try:
         test_files = find_test_files(domain)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
