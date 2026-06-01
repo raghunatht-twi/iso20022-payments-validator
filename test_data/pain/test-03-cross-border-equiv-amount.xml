@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Scenario: cross-border payment from UK to US.
+     EqvtAmt: debtor's account is charged in GBP; transfer currency is USD.
+     IntrmyAgt1 (HSBC UK) routes to CdtrAgt (JPMorgan Chase).
+     US creditor uses non-IBAN account (ABA routing via Othr).
+     ChrgBr=SHAR: each party pays their own bank's fees. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.13">
+  <CstmrCdtTrfInitn>
+    <GrpHdr>
+      <MsgId>TEST-XBDR-20260601-003</MsgId>
+      <CreDtTm>2026-06-01T10:15:00</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <CtrlSum>8500.00</CtrlSum>
+      <InitgPty>
+        <Nm>Britannia Trading Ltd</Nm>
+        <Id>
+          <OrgId>
+            <AnyBIC>BRTNGB2L</AnyBIC>
+          </OrgId>
+        </Id>
+      </InitgPty>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PMTINF-XBDR-001</PmtInfId>
+      <PmtMtd>TRF</PmtMtd>
+      <ReqdExctnDt>
+        <Dt>2026-06-04</Dt>
+      </ReqdExctnDt>
+      <Dbtr>
+        <Nm>Britannia Trading Ltd</Nm>
+        <PstlAdr>
+          <StrtNm>King Street</StrtNm>
+          <BldgNb>1</BldgNb>
+          <PstCd>EC2V 8BD</PstCd>
+          <TwnNm>London</TwnNm>
+          <Ctry>GB</Ctry>
+        </PstlAdr>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>GB29NWBK60161331926819</IBAN>
+        </Id>
+        <Ccy>GBP</Ccy>
+      </DbtrAcct>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>NWBKGB2L</BICFI>
+          <Nm>NatWest Bank plc</Nm>
+        </FinInstnId>
+      </DbtrAgt>
+      <ChrgBr>SHAR</ChrgBr>
+
+      <CdtTrfTxInf>
+        <PmtId>
+          <InstrId>XBDR-TX-001</InstrId>
+          <EndToEndId>E2E-XBDR-ATL-2026-088</EndToEndId>
+          <UETR>f47ac10b-58cc-4372-a567-0e02b2c3d479</UETR>
+        </PmtId>
+        <Amt>
+          <EqvtAmt>
+            <Amt Ccy="GBP">8500.00</Amt>
+            <CcyOfTrf>USD</CcyOfTrf>
+          </EqvtAmt>
+        </Amt>
+        <XchgRateInf>
+          <UnitCcy>GBP</UnitCcy>
+          <XchgRate>1.265</XchgRate>
+          <RateTp>SPOT</RateTp>
+        </XchgRateInf>
+        <ChrgBr>SHAR</ChrgBr>
+        <IntrmyAgt1>
+          <FinInstnId>
+            <BICFI>MIDLGB22</BICFI>
+            <Nm>HSBC Bank plc</Nm>
+          </FinInstnId>
+        </IntrmyAgt1>
+        <CdtrAgt>
+          <FinInstnId>
+            <BICFI>CHASUS33</BICFI>
+            <Nm>JPMorgan Chase Bank NA</Nm>
+          </FinInstnId>
+        </CdtrAgt>
+        <Cdtr>
+          <Nm>Atlantic Tech Inc</Nm>
+          <PstlAdr>
+            <StrtNm>Park Avenue</StrtNm>
+            <BldgNb>200</BldgNb>
+            <PstCd>NY 10166</PstCd>
+            <TwnNm>New York</TwnNm>
+            <CtrySubDvsn>NY</CtrySubDvsn>
+            <Ctry>US</Ctry>
+          </PstlAdr>
+        </Cdtr>
+        <CdtrAcct>
+          <Id>
+            <Othr>
+              <Id>000123456789</Id>
+              <SchmeNm>
+                <Cd>BBAN</Cd>
+              </SchmeNm>
+            </Othr>
+          </Id>
+        </CdtrAcct>
+        <Purp>
+          <Cd>TRAD</Cd>
+        </Purp>
+        <RmtInf>
+          <Ustrd>US Invoice ATL-2026-0088 SPOT GBP8500</Ustrd>
+        </RmtInf>
+      </CdtTrfTxInf>
+    </PmtInf>
+  </CstmrCdtTrfInitn>
+</Document>

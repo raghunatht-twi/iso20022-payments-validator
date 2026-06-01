@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Scenario: high-priority urgent batch. BtchBookg=true settles as one debit.
+     ChrgBr=DEBT means debtor bears all bank charges.
+     NbOfTxs and CtrlSum at both GrpHdr and PmtInf levels must be consistent. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.13">
+  <CstmrCdtTrfInitn>
+    <GrpHdr>
+      <MsgId>TEST-BATCH-20260601-002</MsgId>
+      <CreDtTm>2026-06-01T07:30:00</CreDtTm>
+      <NbOfTxs>3</NbOfTxs>
+      <CtrlSum>75000.00</CtrlSum>
+      <InitgPty>
+        <Nm>Acme Corp</Nm>
+        <Id>
+          <OrgId>
+            <Othr>
+              <Id>ACMECORP001</Id>
+            </Othr>
+          </OrgId>
+        </Id>
+      </InitgPty>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PMTINF-BATCH-001</PmtInfId>
+      <PmtMtd>TRF</PmtMtd>
+      <BtchBookg>true</BtchBookg>
+      <NbOfTxs>3</NbOfTxs>
+      <CtrlSum>75000.00</CtrlSum>
+      <PmtTpInf>
+        <InstrPrty>HIGH</InstrPrty>
+        <SvcLvl>
+          <Cd>URGP</Cd>
+        </SvcLvl>
+      </PmtTpInf>
+      <ReqdExctnDt>
+        <Dt>2026-06-02</Dt>
+      </ReqdExctnDt>
+      <Dbtr>
+        <Nm>Acme Corp</Nm>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>DE89370400440532013000</IBAN>
+        </Id>
+      </DbtrAcct>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>DEUTDEDB</BICFI>
+        </FinInstnId>
+      </DbtrAgt>
+      <ChrgBr>DEBT</ChrgBr>
+
+      <CdtTrfTxInf>
+        <PmtId>
+          <InstrId>BATCH-TX-001</InstrId>
+          <EndToEndId>E2E-BATCH-ALPHA-001</EndToEndId>
+          <UETR>3fa85f64-5717-4562-b3fc-2c963f66afa6</UETR>
+        </PmtId>
+        <Amt>
+          <InstdAmt Ccy="EUR">30000.00</InstdAmt>
+        </Amt>
+        <CdtrAgt>
+          <FinInstnId>
+            <BICFI>COBADEFFXXX</BICFI>
+          </FinInstnId>
+        </CdtrAgt>
+        <Cdtr>
+          <Nm>Supplier Alpha GmbH</Nm>
+        </Cdtr>
+        <CdtrAcct>
+          <Id>
+            <IBAN>DE75512108001245126199</IBAN>
+          </Id>
+        </CdtrAcct>
+        <Purp>
+          <Cd>SUPP</Cd>
+        </Purp>
+        <RmtInf>
+          <Ustrd>Invoice ALPHA-2026-001</Ustrd>
+        </RmtInf>
+      </CdtTrfTxInf>
+
+      <CdtTrfTxInf>
+        <PmtId>
+          <InstrId>BATCH-TX-002</InstrId>
+          <EndToEndId>E2E-BATCH-BETA-055</EndToEndId>
+          <UETR>6ba7b810-9dad-41d1-80b4-00c04fd430c8</UETR>
+        </PmtId>
+        <Amt>
+          <InstdAmt Ccy="EUR">25000.00</InstdAmt>
+        </Amt>
+        <CdtrAgt>
+          <FinInstnId>
+            <BICFI>SSKMDEMMXXX</BICFI>
+          </FinInstnId>
+        </CdtrAgt>
+        <Cdtr>
+          <Nm>Supplier Beta AG</Nm>
+        </Cdtr>
+        <CdtrAcct>
+          <Id>
+            <IBAN>DE87200400600301401300</IBAN>
+          </Id>
+        </CdtrAcct>
+        <Purp>
+          <Cd>SUPP</Cd>
+        </Purp>
+        <RmtInf>
+          <Ustrd>Invoice BETA-2026-055</Ustrd>
+        </RmtInf>
+      </CdtTrfTxInf>
+
+      <CdtTrfTxInf>
+        <PmtId>
+          <InstrId>BATCH-TX-003</InstrId>
+          <EndToEndId>E2E-BATCH-GAMMA-099</EndToEndId>
+          <UETR>7c9e6679-7425-40de-944b-e07fc1f90ae7</UETR>
+        </PmtId>
+        <Amt>
+          <InstdAmt Ccy="EUR">20000.00</InstdAmt>
+        </Amt>
+        <CdtrAgt>
+          <FinInstnId>
+            <BICFI>DEUTDEDB</BICFI>
+          </FinInstnId>
+        </CdtrAgt>
+        <Cdtr>
+          <Nm>Supplier Gamma KG</Nm>
+        </Cdtr>
+        <CdtrAcct>
+          <Id>
+            <IBAN>DE91100000000123456789</IBAN>
+          </Id>
+        </CdtrAcct>
+        <Purp>
+          <Cd>TRAD</Cd>
+        </Purp>
+        <RmtInf>
+          <Ustrd>PO-2026-GAMMA-099</Ustrd>
+        </RmtInf>
+      </CdtTrfTxInf>
+    </PmtInf>
+  </CstmrCdtTrfInitn>
+</Document>
