@@ -177,16 +177,35 @@ def _validate_domain(domain: str) -> None:
 
 
 def find_schema(domain: str) -> Path:
-    matches = list(SCHEMA_DIR.glob(f"{domain}*.xsd"))
+    parts = domain.split(".")
+    domain_name = parts[0]
+    domain_root = SCHEMA_DIR / domain_name
+
+    if not domain_root.is_dir():
+        raise FileNotFoundError(
+            f"No schema directory for domain '{domain_name}' found in '{SCHEMA_DIR}'."
+        )
+
+    if len(parts) >= 2:
+        msg_set = parts[1]
+        search_dir = domain_root / msg_set
+        if not search_dir.is_dir():
+            raise FileNotFoundError(
+                f"No schema directory for message set '{msg_set}' under '{domain_root}'."
+            )
+        matches = list(search_dir.glob(f"{domain}*.xsd"))
+    else:
+        matches = list(domain_root.rglob("*.xsd"))
+
     if not matches:
         raise FileNotFoundError(
-            f"No XSD file matching '{domain}*.xsd' found in '{SCHEMA_DIR}'."
+            f"No XSD file matching '{domain}*.xsd' found under '{domain_root}'."
         )
     if len(matches) > 1:
         names = ", ".join(p.name for p in sorted(matches))
         raise ValueError(
             f"Multiple XSD files match '{domain}': {names}. "
-            "Provide a more specific domain name (e.g. 'pain.001.001.13')."
+            "Provide a more specific domain name (e.g. 'pain.001')."
         )
     return matches[0]
 
@@ -205,24 +224,38 @@ def load_schema(schema_path: Path) -> etree.XMLSchema:
 
 
 def find_test_files(domain: str) -> list[Path]:
-    domain_dir = TEST_DATA_DIR / domain
+    parts = domain.split(".")
+    domain_name = parts[0]
+    domain_root = TEST_DATA_DIR / domain_name
+
+    if not domain_root.is_dir():
+        raise FileNotFoundError(
+            f"Test data directory '{domain_root}' does not exist."
+        )
+
+    if len(parts) >= 2:
+        msg_set = parts[1]
+        domain_dir = domain_root / msg_set
+        if not domain_dir.is_dir():
+            raise FileNotFoundError(
+                f"Test data directory '{domain_dir}' does not exist."
+            )
+        files = sorted(domain_dir.glob("*.xml"))
+    else:
+        files = sorted(domain_root.rglob("*.xml"))
 
     # Guard against path traversal: resolved path must stay inside TEST_DATA_DIR (LLM06)
-    if not domain_dir.resolve().is_relative_to(TEST_DATA_DIR.resolve()):
-        raise ValueError("Domain resolves outside the test_data directory.")
+    for f in files:
+        if not f.resolve().is_relative_to(TEST_DATA_DIR.resolve()):
+            raise ValueError("A test file resolves outside the test_data directory.")
 
-    if not domain_dir.is_dir():
-        raise FileNotFoundError(
-            f"Test data directory '{domain_dir}' does not exist."
-        )
-    files = sorted(domain_dir.glob("*.xml"))
     if not files:
-        raise FileNotFoundError(f"No XML test files found in '{domain_dir}'.")
+        raise FileNotFoundError(f"No XML test files found under '{domain_root}'.")
 
     # Enforce file count limit to prevent unbounded processing (LLM10)
     if len(files) > _MAX_FILES:
         raise ValueError(
-            f"Found {len(files)} XML files in '{domain_dir}' — "
+            f"Found {len(files)} XML files — "
             f"limit is {_MAX_FILES}. Split the test set into smaller directories."
         )
     return files
