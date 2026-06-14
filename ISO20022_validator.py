@@ -23,8 +23,8 @@ SCHEMA_DIR = _BASE_DIR / "schema"
 TEST_DATA_DIR = _BASE_DIR / "test_data"
 REPORT_DIR = _BASE_DIR / "reports"
 
-# Resource limits (LLM10)
-_MAX_XML_SIZE_BYTES = 10 * 1024 * 1024
+_MAX_XML_SIZE_BYTES = 10 * 1024 * 1024  # LLM10: resource cap
+_MAX_XML_SIZE_MB = _MAX_XML_SIZE_BYTES // (1024 * 1024)
 _MAX_FILES = 500
 
 # Hardened XML parser — no external entities, no network, no oversized documents (LLM10)
@@ -35,14 +35,14 @@ _SAFE_PARSER = etree.XMLParser(
     load_dtd=False,
 )
 
-# Accepted ISO 20022 domain name format: four lowercase letters, optionally followed
-# by up to three dot-separated three-digit version components (e.g. "pain" or "pain.001.001.13")
+# Four lowercase letters, optionally followed by up to three dot-separated
+# three-digit segments — e.g. "pain" or "pain.001.001"
 _DOMAIN_RE = re.compile(r"^[a-z]{4}(\.\d{3}){0,3}$")
 
-_NS_RE = re.compile(r"\{[^}]+\}")
+_NAMESPACE_RE = re.compile(r"\{[^}]+\}")
 
-# SHA-256 of known-good schema files. Update here whenever a schema is intentionally
-# replaced, and regenerate via: sha256sum schema/<file> (LLM04)
+# SHA-256 of known-good schema files. Update whenever a schema is intentionally
+# replaced: sha256sum schema/<path>  (LLM04)
 _SCHEMA_HASHES: dict[str, str] = {
     "pain.001.001.13.xsd": "f6ab7c1763c0cf4e6f0fc61eb99e988fe1c243cc56a683ded9d25f71f6b305d9",
 }
@@ -58,9 +58,9 @@ _DOMAIN_DESCRIPTIONS: dict[str, str] = {
     "remt": "Payments Remittance Advice",
 }
 
-# Each rule: (compiled pattern applied to the raw lxml message, suggestion template).
-# Template placeholders {0}, {1} map to regex capture groups.
-# Use {{}} for literal braces inside suggestion text (processed via str.format).
+# Each entry: (pattern matched against the raw lxml error message, suggestion template).
+# Placeholders {0}, {1} map to regex capture groups; use {{}} for literal braces.
+# The Ccy entry must precede the general 'pattern' facet rule to avoid being shadowed.
 _SUGGESTION_RULES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"not expected.*Expected is[^{]*\{[^}]+\}(\w+)", re.DOTALL),
@@ -76,7 +76,6 @@ _SUGGESTION_RULES: list[tuple[re.Pattern[str], str]] = [
         "ExchangeRateType: SPOT, SALE, AGRD; "
         "Priority: NORM, HIGH.",
     ),
-    # Ccy-specific rule must precede the general pattern rule to avoid being shadowed.
     (
         re.compile(r"attribute 'Ccy'"),
         "The 'Ccy' attribute is missing or invalid. "
@@ -123,7 +122,7 @@ _FALLBACK_SUGGESTION = (
     "Check value format, length constraints, allowed codes, and element ordering."
 )
 
-_TW: dict[str, str] = {
+_TW_COLOURS: dict[str, str] = {
     "white":   "#FFFFFF",
     "mist":    "#EDF1F3",
     "black":   "#000000",
@@ -151,7 +150,7 @@ class ValidationResult:
 
 
 def _strip_ns(text: str) -> str:
-    return _NS_RE.sub("", text)
+    return _NAMESPACE_RE.sub("", text)
 
 
 def _suggest_fix(raw_message: str) -> str:
@@ -163,16 +162,15 @@ def _suggest_fix(raw_message: str) -> str:
 
 
 def _domain_label(domain: str) -> str:
-    base = domain.split(".")[0].lower()
-    return _DOMAIN_DESCRIPTIONS.get(base, "ISO 20022 Message Domain")
+    return _DOMAIN_DESCRIPTIONS.get(domain.split(".")[0], "ISO 20022 Message Domain")
 
 
 def _validate_domain(domain: str) -> None:
-    """Reject domain strings that are not valid ISO 20022 identifiers (LLM06)."""
+    # LLM06: sanitise before any file I/O — rejects path-traversal and injection attempts
     if not _DOMAIN_RE.match(domain):
         raise ValueError(
             f"'{domain}' is not a valid ISO 20022 domain name. "
-            "Expected format: 'pain' or 'pain.001.001.13'."
+            "Expected format: 'pain' or 'pain.001.001'."
         )
 
 
@@ -244,16 +242,15 @@ def find_test_files(domain: str) -> list[Path]:
     else:
         files = sorted(domain_root.rglob("*.xml"))
 
-    # Guard against path traversal: resolved path must stay inside TEST_DATA_DIR (LLM06)
+    if not files:
+        raise FileNotFoundError(f"No XML test files found under '{domain_root}'.")
+
+    # LLM06: verify no file escapes the sandbox via symlink or dotdot component
     for f in files:
         if not f.resolve().is_relative_to(TEST_DATA_DIR.resolve()):
             raise ValueError("A test file resolves outside the test_data directory.")
 
-    if not files:
-        raise FileNotFoundError(f"No XML test files found under '{domain_root}'.")
-
-    # Enforce file count limit to prevent unbounded processing (LLM10)
-    if len(files) > _MAX_FILES:
+    if len(files) > _MAX_FILES:  # LLM10: prevent unbounded processing
         raise ValueError(
             f"Found {len(files)} XML files — "
             f"limit is {_MAX_FILES}. Split the test set into smaller directories."
@@ -262,16 +259,15 @@ def find_test_files(domain: str) -> list[Path]:
 
 
 def validate_file(xml_path: Path, schema: etree.XMLSchema) -> ValidationResult:
-    # Enforce file size limit before parsing (LLM10)
     size = xml_path.stat().st_size
-    if size > _MAX_XML_SIZE_BYTES:
+    if size > _MAX_XML_SIZE_BYTES:  # LLM10: cap before parsing
         mb = size / (1024 * 1024)
         return ValidationResult(
             file_name=xml_path.name,
             file_path=xml_path,
             passed=False,
             errors=[ValidationError(
-                message=f"File is {mb:.1f} MB — exceeds the {_MAX_XML_SIZE_BYTES // (1024*1024)} MB limit.",
+                message=f"File is {mb:.1f} MB — exceeds the {_MAX_XML_SIZE_MB} MB limit.",
                 suggestion="Split the XML into smaller files or reduce its content.",
             )],
         )
@@ -367,11 +363,15 @@ def generate_report(
     failed = total - passed
     pass_rate = f"{passed / total * 100:.0f}%" if total else "N/A"
 
-    css_vars = "\n".join(f"  --{k}: {v};" for k, v in _TW.items())
+    css_vars = "\n".join(f"  --{k}: {v};" for k, v in _TW_COLOURS.items())
 
-    # Use project-relative paths to avoid disclosing host directory structure (LLM02)
+    # Project-relative paths prevent host directory disclosure in the report (LLM02)
     schema_rel = schema_path.relative_to(_BASE_DIR)
-    domain_dir_rel = (TEST_DATA_DIR / domain).relative_to(_BASE_DIR)
+    parts = domain.split(".")
+    test_data_dir = TEST_DATA_DIR / parts[0]
+    if len(parts) >= 2:
+        test_data_dir = test_data_dir / parts[1]
+    domain_dir_rel = test_data_dir.relative_to(_BASE_DIR)
 
     rows = "\n".join(
         f"<tr>"
@@ -495,7 +495,7 @@ def generate_report(
 def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: uv run ISO20022_validator.py <domain>", file=sys.stderr)
-        print("Example: uv run ISO20022_validator.py pain", file=sys.stderr)
+        print("Example: uv run ISO20022_validator.py pain.001", file=sys.stderr)
         sys.exit(1)
 
     domain = sys.argv[1].strip().lower()
@@ -526,7 +526,8 @@ def main() -> None:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Files    : {len(test_files)} in test_data/{domain}/\n")
+    test_data_rel = test_files[0].parent.relative_to(_BASE_DIR)
+    print(f"Files    : {len(test_files)} in {test_data_rel}/\n")
 
     results = [validate_file(f, schema) for f in test_files]
 
