@@ -1,8 +1,8 @@
 # ISO 20022 Payments Validator
 
-Tools for validating and generating synthetic test data for **ISO 20022 pain** (Payments Initiation) XML messages. Covers message sets 001–018.
+Tools for validating, generating, and streaming **ISO 20022 pain** (Payments Initiation) XML messages. Covers message sets 001–018.
 
-## Contents
+## Repository Contents
 
 ```
 schema/
@@ -22,23 +22,33 @@ schema/
 
 test_data/
 └── pain/
-    └── 001/   hand-crafted and generated XML test messages
+    ├── 001/   hand-crafted and generated XML test messages
+    └── 002/   generated XML test messages
 
 reports/        generated HTML reports (gitignored)
+state.db        SQLite pipeline state — sent, processed, duplicates (gitignored)
 ```
 
 ## Prerequisites
 
-[uv](https://docs.astral.sh/uv/) — used for all Python execution and dependency management.
+**Python** — [uv](https://docs.astral.sh/uv/) for all script execution and dependency management:
 
 ```bash
-# macOS / Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Both scripts declare their own dependencies via PEP 723 inline metadata, so no `pip install` or virtual-env setup is needed.
+All scripts declare their own dependencies via PEP 723 inline metadata — no `pip install` or virtual environment setup needed.
 
-## Validator
+**Docker** — required for the Kafka pipeline only:
+
+```bash
+# macOS
+brew install --cask docker   # or install Docker Desktop from docker.com
+```
+
+---
+
+## 1 — Validator
 
 Validates XML messages against an XSD schema and produces a Thoughtworks-branded HTML report.
 
@@ -50,7 +60,7 @@ uv run ISO20022_validator.py pain.001
 uv run ISO20022_validator.py pain.001.001
 ```
 
-The report is written to `reports/<domain>_<timestamp>_report.html`.
+Report written to `reports/<domain>_<timestamp>_report.html`.
 
 ### Raw xmllint
 
@@ -58,15 +68,16 @@ The report is written to `reports/<domain>_<timestamp>_report.html`.
 xmllint --schema schema/pain/001/pain.001.001.13.xsd --noout <your-message.xml>
 ```
 
-## Test Data Generator
+---
 
-Generates synthetic ISO 20022 XML test messages for any schema in the repo using Claude (Anthropic API).
+## 2 — Test Data Generator
+
+Generates synthetic ISO 20022 XML test messages for any schema using Claude (Anthropic API).
 
 ```bash
-# Set your Anthropic API key
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-# Generate ~50 test messages for pain.001 (35 pass, 10 fail, 5 edge cases)
+# Generate ~50 test messages for pain.001
 uv run generate_test_data.py pain 001
 
 # Dot-notation alternative
@@ -83,11 +94,11 @@ Generated files are saved to `test_data/<domain>/<msg_set>/`:
 
 | Prefix | Meaning |
 |---|---|
-| `gen-pass-NNN.xml` | Intended to pass XSD validation |
-| `gen-fail-NNN.xml` | Intended to fail XSD validation (deliberate violations) |
-| `gen-edge-NNN.xml` | Valid but tests boundary conditions |
+| `gen-pass-NNN.xml` | Valid — passes XSD validation |
+| `gen-fail-NNN.xml` | Invalid — deliberate schema violation |
+| `gen-edge-NNN.xml` | Valid — tests boundary conditions |
 
-Each run also produces an HTML summary report in `reports/gen_<timestamp>_report.html` listing every generated file, its category, and a one-line description.
+Each run also produces an HTML summary report in `reports/gen_<timestamp>_report.html`.
 
 ### Test distribution
 
@@ -97,7 +108,112 @@ Each run also produces an HTML summary report in `reports/gen_<timestamp>_report
 | Fail (20%) | 10 | Invalid messages, each with a different violation type |
 | Edge (10%) | 5 | Valid messages testing boundary conditions |
 
-Each generated XML is validated against the XSD by lxml. If a "pass" case turns out to be invalid, it is automatically re-bucketed as a "fail" file (and vice versa), so every file is correctly labelled regardless of what Claude produced.
+Each generated XML is validated by lxml. If a "pass" case fails validation it is automatically re-bucketed as a "fail" file, so every saved file is correctly labelled.
+
+---
+
+## 3 — Kafka Pipeline (Multi-Agent)
+
+An event-driven pipeline that streams test messages through Kafka, validates them, and proves exactly-once processing via a reconciliation report.
+
+```
+sender_agent.py   →   Kafka topics   →   receiver_agent.py   →   reconciliation_report.py
+                            ↓ (fail)
+                       iso20022.dlq
+```
+
+### Kafka topics
+
+| Topic | Purpose |
+|---|---|
+| `iso20022.pain.001` … `iso20022.pain.018` | One topic per message set |
+| `iso20022.dlq` | Dead-letter queue — messages that failed XSD validation |
+
+### Start Kafka
+
+```bash
+docker-compose up -d        # starts Confluent Kafka 7.6 on port 9092 (KRaft, no Zookeeper)
+docker-compose logs -f      # follow logs
+docker-compose down         # stop and remove
+docker-compose stop         # stop without removing
+```
+
+### Run the pipeline
+
+```bash
+# Step 1 — send all test messages to Kafka (idempotent: re-runs skip already-sent files)
+uv run sender_agent.py
+
+# Step 2 — start receivers (one thread per domain/message-set, auto-discovered from schema/)
+uv run receiver_agent.py
+# Press Ctrl+C when all messages are consumed
+
+# Step 3 — generate reconciliation report
+uv run reconciliation_report.py
+```
+
+### Receiver output
+
+Each receiver thread prefixes every log line with its domain/message-set:
+
+```
+[pain.001] listening on iso20022.pain.001
+[pain.002] listening on iso20022.pain.002
+...
+[pain.001] PASS       gen-pass-001.xml
+[pain.001] FAIL       gen-fail-003.xml  — Line 12: element 'Ccy' missing
+[pain.001] DUPLICATE  gen-pass-001.xml
+```
+
+### Exactly-once semantics
+
+| Layer | Mechanism |
+|---|---|
+| Kafka | `acks=all` + `retries=5` → at-least-once delivery |
+| Message ID | `sha256(domain + msg_set + xml_bytes)` — content-addressed, stable across retries |
+| SQLite | `INSERT OR IGNORE` on `message_id PRIMARY KEY` — second insert is a no-op |
+| Offset commit | After DB write — crash between validate and commit causes redeliver, caught as duplicate |
+
+### Reconciliation report
+
+`reports/reconciliation_<timestamp>.html` shows:
+
+- **Pass** — validated and processed successfully
+- **Fail → DLQ** — failed XSD validation, forwarded to `iso20022.dlq`
+- **Not Processed** — sent but not yet consumed (receiver still catching up)
+- **Duplicates Caught** — re-sent messages detected and skipped
+
+A green "Fully reconciled" verdict appears when every sent message has been processed exactly once.
+
+### Inspect the state database
+
+```bash
+sqlite3 state.db
+
+-- Summary
+SELECT validation_status, COUNT(*) FROM processed_messages GROUP BY validation_status;
+
+-- Failed messages
+SELECT file_name, message_set, error_detail FROM processed_messages WHERE validation_status = 'fail';
+
+-- Unprocessed
+SELECT file_name FROM sent_messages
+WHERE message_id NOT IN (SELECT message_id FROM processed_messages);
+
+-- Duplicates
+SELECT file_name, detected_at FROM duplicate_events;
+```
+
+### Inspect the dead-letter queue
+
+```bash
+docker exec -it payments-kafka-1 kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic iso20022.dlq \
+  --from-beginning
+```
+
+---
 
 ## pain.001 Message Structure
 
@@ -130,10 +246,10 @@ Document
 
 ## Security
 
-Both scripts apply OWASP LLM Top 10 mitigations:
+All scripts apply OWASP LLM Top 10 mitigations:
 
 - **LLM06** — domain argument validated against `^[a-z]{4}(\.\d{3}){0,3}$` before any file I/O
-- **LLM10** — lxml parser configured with `resolve_entities=False`, `no_network=True`, `huge_tree=False`; file count and size caps enforced
+- **LLM10** — lxml parser hardened (`resolve_entities=False`, `no_network=True`, `huge_tree=False`); file count and size caps enforced
 
 ---
 
