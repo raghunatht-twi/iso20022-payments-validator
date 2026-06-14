@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.13">
+  <CstmrCdtTrfInitn>
+    <GrpHdr>
+      <MsgId>MSG005BADIBAN</MsgId>
+      <CreDtTm>2025-03-15T10:30:00</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <InitgPty><Nm>Acme Corp</Nm></InitgPty>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PMTINF005</PmtInfId>
+      <PmtMtd>TRF</PmtMtd>
+      <ReqdExctnDt><Dt>2025-03-15</Dt></ReqdExctnDt>
+      <Dbtr><Nm>John Doe</Nm></Dbtr>
+      <DbtrAcct><Id><IBAN>gb29NWBK60161331926819</IBAN></Id></DbtrAcct>
+      <DbtrAgt><FinInstnId><BICFI>NWBKGB2L</BICFI></FinInstnId></DbtrAgt>
+      <CdtTrfTxInf>
+        <PmtId><EndToEndId>E2E005</EndToEndId></PmtId>
+        <Amt><InstdAmt Ccy="EUR">1250.00</InstdAmt></Amt>
+        <CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>
+      </CdtTrfTxInf>
+    </PmtInf>
+  </CstmrCdtTrfInitn>
+</Document>

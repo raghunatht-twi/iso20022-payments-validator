@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.13">
+  <CstmrCdtTrfInitn>
+    <GrpHdr>
+      <MsgId>MSG034</MsgId>
+      <CreDtTm>2026-10-10T13:00:00</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <InitgPty><Nm>Coral Marine Services</Nm></InitgPty>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PMTINF034</PmtInfId>
+      <PmtMtd>TRF</PmtMtd>
+      <ReqdExctnDt><Dt>2026-10-12</Dt></ReqdExctnDt>
+      <Dbtr><Nm>Coral Marine Services</Nm></Dbtr>
+      <DbtrAcct><Id><IBAN>MT84MALT011000012345MTLCAST001S</IBAN></Id></DbtrAcct>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>MALTMTMT</BICFI>
+          <LEI>549300MARINE00000MT001</LEI>
+        </FinInstnId>
+      </DbtrAgt>
+      <CdtTrfTxInf>
+        <PmtId><EndToEndId>E2E034</EndToEndId></PmtId>
+        <Amt><InstdAmt Ccy="EUR">7500.00</InstdAmt></Amt>
+        <InstrForCdtrAgt><InstrInf>Beneficiary holds account in USD equivalent</InstrInf></InstrForCdtrAgt>
+        <Cdtr>
+          <Nm>Cyprus Shipping Registry</Nm>
+          <CtryOfRes>CY</CtryOfRes>
+        </Cdtr>
+        <CdtrAcct><Id><IBAN>CY17002001280000001200527600</IBAN></Id></CdtrAcct>
+        <CdtrAgt><FinInstnId><BICFI>BCYPCY2N</BICFI></FinInstnId></CdtrAgt>
+        <RmtInf><Ustrd>Vessel registration fee CMS-VR-2026-001</Ustrd></RmtInf>
+      </CdtTrfTxInf>
+    </PmtInf>
+  </CstmrCdtTrfInitn>
+</Document>

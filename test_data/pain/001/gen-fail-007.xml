@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.13">
+  <CstmrCdtTrfInitn>
+    <GrpHdr>
+      <MsgId>MSG001MISSINGREQ</MsgId>
+      <CreDtTm>2025-03-15T10:30:00</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <CtrlSum>1250.00</CtrlSum>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PMTINF001</PmtInfId>
+      <PmtMtd>TRF</PmtMtd>
+      <ReqdExctnDt><Dt>2025-03-15</Dt></ReqdExctnDt>
+      <Dbtr>
+        <Nm>John Doe</Nm>
+      </Dbtr>
+      <DbtrAcct>
+        <Id><IBAN>GB29NWBK60161331926819</IBAN></Id>
+      </DbtrAcct>
+      <DbtrAgt>
+        <FinInstnId><BICFI>NWBKGB2L</BICFI></FinInstnId>
+      </DbtrAgt>
+      <CdtTrfTxInf>
+        <PmtId>
+          <EndToEndId>E2E001</EndToEndId>
+        </PmtId>
+        <Amt><InstdAmt Ccy="EUR">1250.00</InstdAmt></Amt>
+        <Cdtr><Nm>Jane Smith</Nm></Cdtr>
+        <CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>
+      </CdtTrfTxInf>
+    </PmtInf>
+  </CstmrCdtTrfInitn>
+</Document>

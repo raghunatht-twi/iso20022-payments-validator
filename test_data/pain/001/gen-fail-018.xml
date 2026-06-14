@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.13">
+  <CstmrCdtTrfInitn>
+    <GrpHdr>
+      <MsgId>MSG033</MsgId>
+      <CreDtTm>2026-09-01T10:00:00</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <InitgPty><Nm>Amber Commodities UAB</Nm></InitgPty>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PMTINF033</PmtInfId>
+      <PmtMtd>TRF</PmtMtd>
+      <ReqdExctnDt><Dt>2026-09-03</Dt></ReqdExctnDt>
+      <Dbtr><Nm>Amber Commodities UAB</Nm></Dbtr>
+      <DbtrAcct><Id><IBAN>LT121000011101001000</IBAN></Id></DbtrAcct>
+      <DbtrAgt><FinInstnId><BICFI>AGBLLT2X</BICFI></FinInstnId></DbtrAgt>
+      <CdtTrfTxInf>
+        <PmtId><EndToEndId>E2E033</EndToEndId></PmtId>
+        <Amt><InstdAmt Ccy="EUR">15600.00</InstdAmt></Amt>
+        <Cdtr>
+          <Nm>Riga Amber Arts SIA</Nm>
+          <PstlAdr>
+            <AdrTp><Cd>BIZZ</Cd></AdrTp>
+            <StrtNm>Brivibas</StrtNm>
+            <BldgNb>85</BldgNb>
+            <PstCd>LV-1001</PstCd>
+            <TwnNm>Riga</TwnNm>
+            <Ctry>LV</Ctry>
+          </PstlAdr>
+        </Cdtr>
+        <CdtrAcct><Id><IBAN>LV80BANK0000435195001</IBAN></Id></CdtrAcct>
+        <CdtrAgt><FinInstnId><BICFI>HABALV22</BICFI></FinInstnId></CdtrAgt>
+        <RmtInf><Ustrd>Amber jewellery batch AMB-2026-009</Ustrd></RmtInf>
+      </CdtTrfTxInf>
+    </PmtInf>
+  </CstmrCdtTrfInitn>
+</Document>
