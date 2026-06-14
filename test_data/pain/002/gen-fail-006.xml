@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG001</MsgId>
+      <CreDtTm>2025-03-15T10:30:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>ORIG001</OrgnlMsgId>
+    </OrgnlGrpInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG023-STATUS-RPT</MsgId>
+      <CreDtTm>2025-04-19T10:05:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG023</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+      <GrpSts>ACCP</GrpSts>
+      <NbOfTxsPerSts>
+        <DtldNbOfTxs>3</DtldNbOfTxs>
+        <DtldSts>ACCP</DtldSts>
+        <DtldCtrlSum>7500.00</DtldCtrlSum>
+      </NbOfTxsPerSts>
+      <NbOfTxsPerSts>
+        <DtldNbOfTxs>1</DtldNbOfTxs>
+        <DtldSts>RJCT</DtldSts>
+      </NbOfTxsPerSts>
+    </OrgnlGrpInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

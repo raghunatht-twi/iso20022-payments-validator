@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG010-STATUS-RPT</MsgId>
+      <CreDtTm>2025-04-06T10:00:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG010</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+      <GrpSts>RJCT</GrpSts>
+      <StsRsnInf>
+        <Orgtr>
+          <Nm>BankXYZ Processing Center</Nm>
+        </Orgtr>
+        <Rsn>
+          <Cd>FF01</Cd>
+        </Rsn>
+        <AddtlInf>Invalid file format</AddtlInf>
+      </StsRsnInf>
+    </OrgnlGrpInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG020-STATUS-RPT</MsgId>
+      <CreDtTm>2025-04-16T09:45:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG020</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+    </OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>PMTINF020</OrgnlPmtInfId>
+      <TxInfAndSts>
+        <OrgnlEndToEndId>E2E-020-001</OrgnlEndToEndId>
+        <TxSts>ACCP</TxSts>
+        <ChrgsInf>
+          <Amt Ccy="EUR">12.50</Amt>
+          <Agt>
+            <FinInstnId>
+              <BICFI>INGBNL2A</BICFI>
+            </FinInstnId>
+          </Agt>
+        </ChrgsInf>
+        <ChrgsInf>
+          <Amt Ccy="EUR">8.00</Amt>
+          <Agt>
+            <FinInstnId>
+              <BICFI>ABNANL2A</BICFI>
+            </FinInstnId>
+          </Agt>
+        </ChrgsInf>
+        <OrgnlTxRef>
+          <Amt>
+            <InstdAmt Ccy="EUR">5000.00</InstdAmt>
+          </Amt>
+          <PmtMtd>TRF</PmtMtd>
+        </OrgnlTxRef>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG005-STATUS-RPT</MsgId>
+      <CreDtTm>2025-04-01T09:15:30</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG005</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+    </OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>PMTINF005</OrgnlPmtInfId>
+      <PmtInfSts>RJCT</PmtInfSts>
+      <TxInfAndSts>
+        <StsId>STSID-005-001</StsId>
+        <OrgnlInstrId>INSTRID-005-001</OrgnlInstrId>
+        <OrgnlEndToEndId>E2E-005-001</OrgnlEndToEndId>
+        <OrgnlUETR>b2c3d4e5-f6a7-4891-bc23-d4e5f6a7b8c9</OrgnlUETR>
+        <TxSts>RJCT</TxSts>
+        <StsRsnInf>
+          <Rsn>
+            <Cd>AM04</Cd>
+          </Rsn>
+          <AddtlInf>Insufficient funds</AddtlInf>
+        </StsRsnInf>
+        <ChrgsInf>
+          <Amt Ccy="EUR">5.00</Amt>
+          <Agt>
+            <FinInstnId>
+              <BICFI>BNPAFRPP</BICFI>
+            </FinInstnId>
+          </Agt>
+        </ChrgsInf>
+        <AccptncDtTm>2025-04-01T09:10:00</AccptncDtTm>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

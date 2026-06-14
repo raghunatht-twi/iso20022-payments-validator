@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG026-STATUS-RPT</MsgId>
+      <CreDtTm>2025-04-22T15:00:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG026</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+    </OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>PMTINF026</OrgnlPmtInfId>
+      <TxInfAndSts>
+        <OrgnlEndToEndId>E2E-026-001</OrgnlEndToEndId>
+        <OrgnlUETR>e5f6a7b8-c9d0-4134-ef56-a7b8c9d0e1f2</OrgnlUETR>
+        <TxSts>ACCP</TxSts>
+        <OrgnlTxRef>
+          <Amt>
+            <InstdAmt Ccy="SGD">6500.00</InstdAmt>
+          </Amt>
+          <PmtTpInf>
+            <LclInstrm>
+              <Cd>INST</Cd>
+            </LclInstrm>
+          </PmtTpInf>
+          <PmtMtd>TRF</PmtMtd>
+          <CdtrAgt>
+            <FinInstnId>
+              <BICFI>DBSSSGSG</BICFI>
+            </FinInstnId>
+          </CdtrAgt>
+          <CdtrAcct>
+            <Id>
+              <Othr>
+                <Id>SG12345678901234</Id>
+              </Othr>
+            </Id>
+          </CdtrAcct>
+        </OrgnlTxRef>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

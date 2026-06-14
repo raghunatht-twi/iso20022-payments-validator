@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>FULLPOP001</MsgId>
+      <CreDtTm>2025-09-20T14:45:30</CreDtTm>
+      <InitgPty>
+        <Nm>Initiating Party Full Name</Nm>
+        <PstlAdr>
+          <AdrTp>
+            <Cd>ADDR</Cd>
+          </AdrTp>
+          <Dept>Department Name</Dept>
+          <SubDept>Sub Department</SubDept>
+          <StrtNm>Main Street</StrtNm>
+          <BldgNb>42</BldgNb>
+          <BldgNm>Tower Block</BldgNm>
+          <Flr>5th Floor</Flr>
+          <UnitNb>Unit 5A</UnitNb>
+          <PstBx>PO Box 1</PstBx>
+          <Room>Room 101</Room>
+          <PstCd>EC1A 1BB</PstCd>
+          <TwnNm>London</TwnNm>
+          <TwnLctnNm>City of London</TwnLctnNm>
+          <DstrctNm>Aldgate</DstrctNm>
+          <CtrySubDvsn>England</CtrySubDvsn>
+          <Ctry>GB</Ctry>
+          <AdrLine>Line 1</AdrLine>
+          <AdrLine>Line 2</AdrLine>
+          <AdrLine>Line 3</AdrLine>
+          <AdrLine>Line 4</AdrLine>
+          <AdrLine>Line 5</AdrLine>
+          <AdrLine>Line 6</AdrLine>
+          <AdrLine>Line 7</AdrLine>
+        </PstlAdr>
+        <Id>
+          <OrgId>
+            <AnyBIC>NWBKGB2LXXX</AnyBIC>
+            <LEI>529900T8BM49AURSDO55</LEI>
+            <Othr>
+              <Id>OrgOtherId001</Id>
+              <SchmeNm>
+                <Cd>BANK</Cd>
+              </SchmeNm>
+              <Issr>IssuerName</Issr>
+            </Othr>
+          </OrgId>
+        </Id>
+        <CtryOfRes>GB</CtryOfRes>
+        <CtctDtls>
+          <NmPrfx>MIST</NmPrfx>
+          <Nm>John Smith</Nm>
+          <PhneNb>+44-2071234567</PhneNb>
+          <MobNb>+44-7700900000</MobNb>
+          <FaxNb>+44-2071234568</FaxNb>
+          <URLAdr>https://www.example.com</URLAdr>
+          <EmailAdr>john.smith@example.com</EmailAdr>
+          <EmailPurp>WORK</EmailPurp>
+          <JobTitl>Treasury Manager</JobTitl>
+          <Rspnsblty>Payments</Rspnsblty>
+          <Dept>Finance</Dept>
+          <Othr>
+            <ChanlTp>PHON</ChanlTp>
+            <Id>ContactId001</Id>
+          </Othr>
+          <PrefrdMtd>ONLI</PrefrdMtd>
+        </CtctDtls>
+      </InitgPty>
+      <FwdgAgt>
+        <FinInstnId>
+          <BICFI>CHASUS33XXX</BICFI>
+          <LEI>529900T8BM49AURSDO55</LEI>
+          <Nm>JPMorgan Chase</Nm>
+        </FinInstnId>
+      </FwdgAgt>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>DEUTDEDB</BICFI>
+        </FinInstnId>
+      </DbtrAgt>
+      <CdtrAgt>
+        <FinInstnId>
+          <BICFI>NWBKGB2L</BICFI>
+        </FinInstnId>
+      </CdtrAgt>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>ORIGFULL001</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+      <OrgnlCreDtTm>2025-09-19T09:00:00</OrgnlCreDtTm>
+      <OrgnlNbOfTxs>1</OrgnlNbOfTxs>
+      <OrgnlCtrlSum>1250.50000</OrgnlCtrlSum>
+      <GrpSts>ACCP</GrpSts>
+      <StsRsnInf>
+        <Orgtr>
+          <Nm>Status Originator</Nm>
+        </Orgtr>
+        <Rsn>
+          <Cd>AC01</Cd>
+        </Rsn>
+        <AddtlInf>All optional fields populated for maximum coverage test</AddtlInf>
+      </StsRsnInf>
+      <NbOfTxsPerSts>
+        <DtldNbOfTxs>1</DtldNbOfTxs>
+        <DtldSts>ACCP</DtldSts>
+        <DtldCtrlSum>1250.50000</DtldCtrlSum>
+      </NbOfTxsPerSts>
+    </OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>PMTFULL001</OrgnlPmtInfId>
+      <OrgnlNbOfTxs>1</OrgnlNbOfTxs>
+      <OrgnlCtrlSum>1250.50000</OrgnlCtrlSum>
+      <PmtInfSts>ACCP</PmtInfSts>
+      <StsRsnInf>
+        <Rsn>
+          <Prtry>ProprietaryReason</Prtry>
+        </Rsn>
+      </StsRsnInf>
+      <NbOfTxsPerSts>
+        <DtldNbOfTxs>1</DtldNbOfTxs>
+        <DtldSts>ACCP</DtldSts>
+      </NbOfTxsPerSts>
+      <TxInfAndSts>
+        <StsId>STSFULLTX001</StsId>
+        <OrgnlInstrId>INSTRIDFULLTX001</OrgnlInstrId>
+        <OrgnlEndToEndId>E2EIDFULLTX001</OrgnlEndToEndId>
+        <OrgnlUETR>f47ac10b-58cc-4372-a567-0e02b2c3d479</OrgnlUETR>
+        <TxSts>ACCP</TxSts>
+        <StsRsnInf>
+          <Rsn>
+            <Cd>AC01</Cd>
+          </Rsn>
+        </StsRsnInf>
+        <ChrgsInf>
+          <Amt Ccy="EUR">10.50000</Amt>
+          <Agt>
+            <FinInstnId>
+              <BICFI>DEUTDEDB</BICFI>
+            </FinInstnId>
+          </Agt>
+          <Tp>
+            <Cd>BRKF</Cd>
+          </Tp>
+        </ChrgsInf>
+        <TrckrData>
+          <ConfdDt>
+            <Dt>2025-09-20</Dt>
+          </ConfdDt>
+          <ConfdAmt Ccy="EUR">1250.50000</ConfdAmt>
+          <TrckrRcrd>
+            <Agt>
+              <FinInstnId>
+                <BICFI>NWBKGB2L</BICFI>
+              </FinInstnId>
+            </Agt>
+            <ChrgBr>SLEV</ChrgBr>
+            <ChrgsAmt Ccy="EUR">5.00000</ChrgsAmt>
+            <XchgRateData>
+              <SrcCcy>EUR</SrcCcy>
+              <TrgtCcy>GBP</TrgtCcy>
+              <XchgRate>0.8500000000</XchgRate>
+              <UnitCcy>EUR</UnitCcy>
+            </XchgRateData>
+          </TrckrRcrd>
+        </TrckrData>
+        <AccptncDtTm>2025-09-20T14:45:30</AccptncDtTm>
+        <AcctSvcrRef>ACCTSVCRREF001</AcctSvcrRef>
+        <ClrSysRef>CLRSYSREF001</ClrSysRef>
+        <OrgnlTxRef>
+          <IntrBkSttlmAmt Ccy="EUR">1250.50000</IntrBkSttlmAmt>
+          <Amt>
+            <InstdAmt Ccy="EUR">1250.50000</InstdAmt>
+          </Amt>
+          <IntrBkSttlmDt>2025-09-20</IntrBkSttlmDt>
+          <ReqdColltnDt>2025-09-20</ReqdColltnDt>
+          <ReqdExctnDt>
+            <Dt>2025-09-20</Dt>
+          </ReqdExctnDt>
+          <SttlmInf>
+            <SttlmMtd>CLRG</SttlmMtd>
+            <ClrSys>
+              <Cd>ABE</Cd>
+            </ClrSys>
+          </SttlmInf>
+          <PmtTpInf>
+            <InstrPrty>HIGH</InstrPrty>
+            <ClrChanl>RTGS</ClrChanl>
+            <SvcLvl>
+              <Cd>SEPA</Cd>
+            </SvcLvl>
+            <LclInstrm>
+              <Cd>CORE</Cd>
+            </LclInstrm>
+            <SeqTp>FRST</SeqTp>
+            <CtgyPurp>
+              <Cd>SUPP</Cd>
+            </CtgyPurp>
+          </PmtTpInf>
+          <PmtMtd>TRF</PmtMtd>
+          <RmtInf>
+            <Ustrd>Unstructured remittance information</Ustrd>
+          </RmtInf>
+          <Dbtr>
+            <Pty>
+              <Nm>Debtor Name</Nm>
+            </Pty>
+          </Dbtr>
+          <DbtrAcct>
+            <Id>
+              <IBAN>GB29NWBK60161331926819</IBAN>
+            </Id>
+          </DbtrAcct>
+          <DbtrAgt>
+            <FinInstnId>
+              <BICFI>DEUTDEDB</BICFI>
+            </FinInstnId>
+          </DbtrAgt>
+          <CdtrAgt>
+            <FinInstnId>
+              <BICFI>NWBKGB2L</BICFI>
+            </FinInstnId>
+          </CdtrAgt>
+          <Cdtr>
+            <Pty>
+              <Nm>Creditor Name</Nm>
+            </Pty>
+          </Cdtr>
+          <CdtrAcct>
+            <Id>
+              <IBAN>DE89370400440532013000</IBAN>
+            </Id>
+          </CdtrAcct>
+        </OrgnlTxRef>
+        <SplmtryData>
+          <PlcAndNm>SupplementaryPlace</PlcAndNm>
+          <Envlp>
+            <AnyData>test</AnyData>
+          </Envlp>
+        </SplmtryData>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

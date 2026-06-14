@@ -5,3 +5,5 @@ __pycache__/
 .venv/
 .python-version
 state.db
+state.db-shm
+state.db-wal

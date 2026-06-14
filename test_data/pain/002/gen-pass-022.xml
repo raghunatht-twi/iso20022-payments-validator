@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG024-STATUS-RPT</MsgId>
+      <CreDtTm>2025-04-20T13:00:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG024</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+    </OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>PMTINF024</OrgnlPmtInfId>
+      <TxInfAndSts>
+        <OrgnlEndToEndId>E2E-024-001</OrgnlEndToEndId>
+        <TxSts>ACCP</TxSts>
+        <OrgnlTxRef>
+          <Amt>
+            <InstdAmt Ccy="DKK">47500.00</InstdAmt>
+          </Amt>
+          <PmtMtd>TRF</PmtMtd>
+          <UltmtDbtr>
+            <Pty>
+              <Nm>Ultimate Debtor ApS</Nm>
+              <CtryOfRes>DK</CtryOfRes>
+            </Pty>
+          </UltmtDbtr>
+          <Dbtr>
+            <Pty>
+              <Nm>Debtor Company A/S</Nm>
+            </Pty>
+          </Dbtr>
+          <Cdtr>
+            <Pty>
+              <Nm>Creditor Bank Denmark</Nm>
+            </Pty>
+          </Cdtr>
+          <UltmtCdtr>
+            <Pty>
+              <Nm>Ultimate Creditor ApS</Nm>
+              <CtryOfRes>DK</CtryOfRes>
+            </Pty>
+          </UltmtCdtr>
+        </OrgnlTxRef>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

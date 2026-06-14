@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG004-STATUS-RPT</MsgId>
+      <CreDtTm>2025-03-18T14:22:00</CreDtTm>
+      <InitgPty>
+        <Nm>Gamma Finance GmbH</Nm>
+      </InitgPty>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>DEUTDEDB</BICFI>
+        </FinInstnId>
+      </DbtrAgt>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG004</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+      <GrpSts>PDNG</GrpSts>
+    </OrgnlGrpInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

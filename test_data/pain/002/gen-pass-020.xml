@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.15">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG022-STATUS-RPT</MsgId>
+      <CreDtTm>2025-04-18T14:10:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PAIN001-MSG022</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.12</OrgnlMsgNmId>
+    </OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>PMTINF022</OrgnlPmtInfId>
+      <TxInfAndSts>
+        <OrgnlEndToEndId>E2E-022-001</OrgnlEndToEndId>
+        <TxSts>ACCP</TxSts>
+        <TrckrData>
+          <ConfdDt>
+            <DtTm>2025-04-18T14:00:00</DtTm>
+          </ConfdDt>
+          <ConfdAmt Ccy="USD">50000.00</ConfdAmt>
+          <TrckrRcrd>
+            <Agt>
+              <FinInstnId>
+                <BICFI>WFBIUS6S</BICFI>
+              </FinInstnId>
+            </Agt>
+            <ChrgBr>DEBT</ChrgBr>
+            <ChrgsAmt Ccy="USD">25.00</ChrgsAmt>
+            <XchgRateData>
+              <SrcCcy>USD</SrcCcy>
+              <TrgtCcy>EUR</TrgtCcy>
+              <XchgRate>0.9200000000</XchgRate>
+            </XchgRateData>
+          </TrckrRcrd>
+        </TrckrData>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>
