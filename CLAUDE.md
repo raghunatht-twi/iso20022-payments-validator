@@ -4,14 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-This repository contains the ISO 20022 XSD schema for **pain.001.001.13** — Customer Credit Transfer Initiation, Version 13. Generated 2026-03-02. Namespace: `urn:iso:std:iso:20022:tech:xsd:pain.001.001.13`.
+This repository contains ISO 20022 XSD schemas and an XML validator for the **pain** (Payments Initiation) domain, covering message sets 001–018. The primary schema is **pain.001.001.13** — Customer Credit Transfer Initiation, Version 13. Namespace: `urn:iso:std:iso:20022:tech:xsd:pain.001.001.13`.
 
-This schema defines the message structure for a debtor initiating a credit transfer to one or more creditors through their bank.
+## Directory Structure
 
-## Validating XML Against This Schema
+```
+schema/
+└── <domain>/               e.g. pain/
+    └── <message-set>/      e.g. 001/
+        └── <domain>.<message-set>.<variant>.<version>.xsd
+
+test_data/
+└── <domain>/               e.g. pain/
+    └── <message-set>/      e.g. 001/
+        └── *.xml
+
+reports/                    generated HTML reports (gitignored)
+```
+
+Schemas and test fixtures are co-organised by the same `domain/message-set` hierarchy as the ISO 20022 naming convention.
+
+## Running the Validator
 
 ```bash
-xmllint --schema pain.001.001.13.xsd --noout <your-message.xml>
+# Validate all pain.001 test files and produce an HTML report
+uv run ISO20022_validator.py pain.001
+
+# More specific — resolves to schema/pain/001/pain.001.001.13.xsd
+uv run ISO20022_validator.py pain.001.001
+```
+
+The domain argument accepts any prefix valid against `^[a-z]{4}(\.\d{3}){0,3}$`. Passing only `pain` will error if multiple message-set schemas exist (by design — be specific).
+
+## Raw xmllint
+
+```bash
+xmllint --schema schema/pain/001/pain.001.001.13.xsd --noout <your-message.xml>
 ```
 
 ## Message Hierarchy
