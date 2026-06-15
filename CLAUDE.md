@@ -76,6 +76,30 @@ uv run generate_test_data.py --model=claude-opus-4-8 pain 001
 
 Default model: `claude-sonnet-4-6`. Adaptive thinking enabled automatically for Opus/Fable models only. Generated files: `gen-pass-NNN.xml`, `gen-fail-NNN.xml`, `gen-edge-NNN.xml`.
 
+### tamper_agent.py
+
+Testing tool that publishes messages whose XML content has been modified **after** signing — simulating in-transit tampering. The receiver detects the signature mismatch and routes them to `iso20022.tampered`.
+
+```bash
+uv run tamper_agent.py          # tamper 3 messages (default)
+uv run tamper_agent.py 10       # tamper 10 messages
+```
+
+How it works:
+1. Reads XML files from `test_data/`
+2. Signs the **original** bytes with the Ed25519 private key (identical to what the sender does)
+3. Modifies the XML in memory: inflates any monetary amount 10×; falls back to replacing a BIC-like value; final fallback appends `<!-- TAMPERED -->`
+4. Publishes `modified xml_content + original signature` to the topic
+5. Message IDs are prefixed with `"tampered-"` so they are never mistaken for duplicates of the legitimate messages
+
+Run order for the tamper scenario:
+```bash
+uv run sender_agent.py         # publish legitimate signed messages
+uv run tamper_agent.py         # publish tampered messages (content ≠ signature)
+uv run receiver_agent.py       # tampered messages are quarantined; check [pain.xxx] TAMPERED lines
+uv run reconciliation_report.py  # "Tampered Message Log" section shows the detections
+```
+
 ### sender_agent.py
 
 Discovers all XML test files under `test_data/` and publishes each to its Kafka topic (`iso20022.<domain>.<msg_set>`). Signs every message with the Ed25519 private key from `keys/sender_private.pem`. Idempotent — re-runs skip files already recorded in `state.db`. Requires Kafka running.
