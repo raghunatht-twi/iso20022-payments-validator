@@ -1,6 +1,14 @@
-# ISO 20022 Payments Validator
+# ISO 20022 Payments Test Automation Platform
 
 Tools for validating, generating, and streaming **ISO 20022 pain** (Payments Initiation) XML messages. Covers message sets 001–018.
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [Architecture](docs/architecture.html) | System design, data flows, component breakdown, design decisions |
+| [Executive Report](docs/executive-report.html) | Business value, effort reduction, and ROI narrative |
+| [OWASP LLM Security Assessment](docs/owasp-llm-security-report.html) | Full security assessment against OWASP LLM Top 10 (2025) |
 
 ## Repository Contents
 
@@ -24,6 +32,11 @@ test_data/
 └── pain/
     ├── 001/   hand-crafted and generated XML test messages
     └── 002/   generated XML test messages
+
+docs/
+    architecture.html               System architecture document
+    executive-report.html           Business value and executive summary
+    owasp-llm-security-report.html  OWASP LLM Top 10 security assessment
 
 reports/        generated HTML reports (gitignored)
 state.db        SQLite pipeline state — sent, processed, duplicates (gitignored)
