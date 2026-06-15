@@ -57,9 +57,10 @@ _STATUS_LABELS = {
 
 @dataclass
 class AnalyticsResult:
-    schema_breakdown: list[tuple] = field(default_factory=list)
-    error_patterns:   list[tuple] = field(default_factory=list)
+    schema_breakdown:  list[tuple] = field(default_factory=list)
+    error_patterns:    list[tuple] = field(default_factory=list)
     category_outcomes: list[tuple] = field(default_factory=list)
+    tampered_by_set:   list[tuple] = field(default_factory=list)
 
 
 # ── DuckDB analytics ───────────────────────────────────────────────────────────
@@ -129,8 +130,17 @@ def _run_analytics(db_path: Path) -> AnalyticsResult | None:
             ORDER BY test_category, validation_status
         """).fetchall()
 
+        tampered_by_set = conn.execute("""
+            SELECT
+                domain || '.' || message_set AS schema_label,
+                COUNT(*)                     AS tampered_count
+            FROM state.tampered_messages
+            GROUP BY schema_label
+            ORDER BY tampered_count DESC
+        """).fetchall()
+
         conn.close()
-        return AnalyticsResult(schema_breakdown, error_patterns, category_outcomes)
+        return AnalyticsResult(schema_breakdown, error_patterns, category_outcomes, tampered_by_set)
 
     except Exception as exc:
         print(f"Warning: DuckDB analytics failed — {exc}", file=sys.stderr)
@@ -190,6 +200,24 @@ def _build_rows(sent: list[sqlite3.Row], processed: dict) -> str:
             "</tr>"
         )
     return "\n".join(rows)
+
+
+def _build_tampered_rows(tampered: list[sqlite3.Row]) -> str:
+    if not tampered:
+        return (
+            "<tr><td colspan='5' style='text-align:center;color:#888;padding:1.5rem;'>"
+            "No tampered messages detected — all signatures verified successfully.</td></tr>"
+        )
+    return "\n".join(
+        "<tr>"
+        f"<td style='font-family:monospace;font-size:0.82rem;'>{html.escape(t['file_name'])}</td>"
+        f"<td>{html.escape(t['domain'])}.{html.escape(t['message_set'])}</td>"
+        f"<td style='font-family:monospace;font-size:0.75rem;color:#888;'>{html.escape(t['message_id'][:16])}...</td>"
+        f"<td style='font-size:0.82rem;color:#555;'>{html.escape(t['detected_at'][:19].replace('T', ' '))}</td>"
+        f"<td style='font-size:0.82rem;color:#F2617A;'>{html.escape(t['tampered_topic'])}</td>"
+        "</tr>"
+        for t in tampered
+    )
 
 
 def _build_duplicate_rows(duplicates: list[sqlite3.Row]) -> str:
@@ -303,13 +331,58 @@ def _build_category_outcome_rows(rows: list[tuple]) -> str:
     return "\n".join(out)
 
 
+def _build_tampered_by_set_rows(rows: list[tuple]) -> str:
+    if not rows:
+        return "<tr><td colspan='2' style='text-align:center;color:#888;padding:1.5rem;'>No tampered messages detected.</td></tr>"
+    max_count = rows[0][1] if rows else 1
+    out = []
+    for schema_label, count in rows:
+        bar_width = int(count / max_count * 100)
+        out.append(
+            "<tr>"
+            f"<td><strong>{html.escape(str(schema_label))}</strong></td>"
+            f"<td style='min-width:200px;'>"
+            f'<div style="display:flex;align-items:center;gap:0.5rem;">'
+            f'<div style="flex:1;background:#e0eaee;border-radius:3px;height:8px;">'
+            f'<div style="width:{bar_width}%;background:#F2617A;border-radius:3px;height:8px;"></div>'
+            f'</div>'
+            f'<span style="font-size:0.8rem;font-weight:600;color:#F2617A;min-width:24px;">{count}</span>'
+            f'</div></td>'
+            "</tr>"
+        )
+    return "\n".join(out)
+
+
 def _analytics_html(analytics: AnalyticsResult | None) -> str:
     if analytics is None:
         return ""
 
-    schema_rows   = _build_schema_breakdown_rows(analytics.schema_breakdown)
-    error_rows    = _build_error_pattern_rows(analytics.error_patterns)
-    category_rows = _build_category_outcome_rows(analytics.category_outcomes)
+    schema_rows      = _build_schema_breakdown_rows(analytics.schema_breakdown)
+    error_rows       = _build_error_pattern_rows(analytics.error_patterns)
+    category_rows    = _build_category_outcome_rows(analytics.category_outcomes)
+    tampered_set_rows = _build_tampered_by_set_rows(analytics.tampered_by_set)
+
+    tampered_analytics_section = ""
+    if analytics.tampered_by_set:
+        tampered_analytics_section = f"""
+    <section>
+      <h2>Analytics — Tampered Messages by Schema <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
+        Messages whose Ed25519 signature failed verification, grouped by ISO 20022 message set.
+        These were forwarded to <code>iso20022.tampered</code> and excluded from XSD validation.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Schema</th>
+            <th>Tampered Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tampered_set_rows}
+        </tbody>
+      </table>
+    </section>"""
 
     return f"""
     <section>
@@ -373,7 +446,8 @@ def _analytics_html(analytics: AnalyticsResult | None) -> str:
           {category_rows}
         </tbody>
       </table>
-    </section>"""
+    </section>
+    {tampered_analytics_section}"""
 
 
 # ── Report generation ──────────────────────────────────────────────────────────
@@ -382,6 +456,7 @@ def generate_report(
     sent: list[sqlite3.Row],
     processed: dict,
     duplicates: list[sqlite3.Row],
+    tampered: list[sqlite3.Row],
     analytics: AnalyticsResult | None = None,
 ) -> Path:
     REPORT_DIR.mkdir(exist_ok=True)
@@ -393,6 +468,7 @@ def generate_report(
     n_fail = sum(1 for s in sent if _reconciliation_status(s, processed) == "fail")
     n_unprocessed = sum(1 for s in sent if _reconciliation_status(s, processed) == "not_processed")
     n_duplicates = len(duplicates)
+    n_tampered = len(tampered)
     fully_reconciled = n_unprocessed == 0
 
     reconciliation_verdict = (
@@ -410,6 +486,7 @@ def generate_report(
         + _summary_card("Fail → DLQ", n_fail, "#F2617A")
         + _summary_card("Not Processed", n_unprocessed, "#CC850A")
         + _summary_card("Duplicates Caught", n_duplicates, "#634F7D")
+        + _summary_card("Tampered", n_tampered, "#F2617A")
     )
 
     doc = f"""<!DOCTYPE html>
@@ -511,6 +588,28 @@ def generate_report(
       </table>
     </section>
 
+    <section>
+      <h2>Tampered Message Log</h2>
+      <p>
+        Messages whose Ed25519 digital signature failed verification. These were
+        forwarded to <code>iso20022.tampered</code> and never submitted for XSD validation.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:22%">File</th>
+            <th style="width:14%">Domain / Set</th>
+            <th style="width:22%">Message ID (prefix)</th>
+            <th style="width:16%">Detected At</th>
+            <th>Tampered Topic</th>
+          </tr>
+        </thead>
+        <tbody>
+          {_build_tampered_rows(tampered)}
+        </tbody>
+      </table>
+    </section>
+
   </article>
   <footer>reconciliation_report &mdash; DuckDB analytics &mdash; Thoughtworks Financial Services Practice</footer>
 </body>
@@ -546,6 +645,10 @@ def main() -> None:
         "SELECT * FROM duplicate_events ORDER BY detected_at"
     ).fetchall()
 
+    tampered = conn.execute(
+        "SELECT * FROM tampered_messages ORDER BY detected_at"
+    ).fetchall()
+
     conn.close()
 
     if not sent:
@@ -561,6 +664,7 @@ def main() -> None:
     print(f"Fail/DLQ : {n_fail}")
     print(f"Pending  : {n_unprocessed}")
     print(f"Dupes    : {len(duplicates)}")
+    print(f"Tampered : {len(tampered)}")
     print(f"Reconciled: {'YES' if n_unprocessed == 0 else 'NO — receiver still catching up'}")
 
     print("Running DuckDB analytics ...")
@@ -570,7 +674,7 @@ def main() -> None:
         print(f"  Error patterns    : {len(analytics.error_patterns)} categories")
         print(f"  Category outcomes : {len(analytics.category_outcomes)} rows")
 
-    report_path = generate_report(sent, processed, duplicates, analytics)
+    report_path = generate_report(sent, processed, duplicates, tampered, analytics)
     print(f"\nReport   : {report_path}")
 
 
