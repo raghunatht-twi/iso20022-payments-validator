@@ -543,16 +543,17 @@ def main() -> None:
         model_override = args[0].split("=", 1)[1]
         args = args[1:]
 
-    if len(args) < 1 or len(args) > 2:
-        print("Usage: uv run generate_test_data.py [--model=<id>] <domain> [<message-set>]", file=sys.stderr)
-        print("  uv run generate_test_data.py pain              # all pain message sets", file=sys.stderr)
-        print("  uv run generate_test_data.py pain 001          # pain.001 only", file=sys.stderr)
-        print("  uv run generate_test_data.py pain.001          # pain.001 only", file=sys.stderr)
+    if len(args) < 1:
+        print("Usage: uv run generate_test_data.py [--model=<id>] <domain> [<message-set> ...]", file=sys.stderr)
+        print("  uv run generate_test_data.py pain                  # all pain message sets", file=sys.stderr)
+        print("  uv run generate_test_data.py pain 001              # pain.001 only", file=sys.stderr)
+        print("  uv run generate_test_data.py pain 001 002 005      # pain.001, pain.002, pain.005", file=sys.stderr)
+        print("  uv run generate_test_data.py pain.001              # pain.001 only", file=sys.stderr)
         print("  uv run generate_test_data.py --model=claude-sonnet-4-6 pain 001", file=sys.stderr)
         sys.exit(1)
 
     domain_arg = args[0].strip().lower()
-    msg_set_arg = args[1].strip() if len(args) == 2 else None
+    msg_set_args = [a.strip() for a in args[1:]]
 
     try:
         _validate_domain_arg(domain_arg)
@@ -562,21 +563,33 @@ def main() -> None:
 
     parts = domain_arg.split(".")
     domain_name = parts[0]
-    msg_set = msg_set_arg if msg_set_arg is not None else (parts[1] if len(parts) >= 2 else None)
+    dotted_msg_set = parts[1] if len(parts) >= 2 else None
+    msg_sets = msg_set_args if msg_set_args else ([dotted_msg_set] if dotted_msg_set else [])
 
     try:
-        xsd_files = _find_xsd_files(domain_name, msg_set)
+        if msg_sets:
+            xsd_files: list[Path] = []
+            seen: set[Path] = set()
+            for ms in msg_sets:
+                for p in _find_xsd_files(domain_name, ms):
+                    if p not in seen:
+                        seen.add(p)
+                        xsd_files.append(p)
+        else:
+            xsd_files = _find_xsd_files(domain_name, None)
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
     if not xsd_files:
-        scope = f"'{domain_name}'" + (f" / '{msg_set}'" if msg_set else "")
+        scope = f"'{domain_name}'" + (f" / {msg_sets}" if msg_sets else "")
         print(f"Error: No XSD files found for {scope}", file=sys.stderr)
         sys.exit(1)
 
     model = model_override or _MODEL
-    scope_label = domain_name + (f" / message set {msg_set}" if msg_set else " (all message sets)")
+    scope_label = domain_name + (
+        " / message sets: " + ", ".join(msg_sets) if msg_sets else " (all message sets)"
+    )
     print("ISO 20022 Test Data Generator")
     print(f"Domain  : {scope_label}")
     print(f"Schemas : {len(xsd_files)}")
