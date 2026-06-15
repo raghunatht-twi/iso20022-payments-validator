@@ -305,7 +305,7 @@
   <h1>ISO 20022 Payments Platform<br>LLM Security Assessment</h1>
   <div class="meta">
     <span>Assessed: June 2026</span>
-    <span>Scope: 5 Python scripts, 1 docker-compose, SQLite schema</span>
+    <span>Scope: 6 Python scripts, 1 docker-compose, SQLite schema</span>
     <span>Standard: OWASP Top 10 for LLM Applications v2 (2025)</span>
     <span>Assessor: Automated static analysis + manual code review</span>
   </div>
@@ -347,11 +347,12 @@
         <tr><th>File</th><th>Role</th><th>LLM-involved?</th></tr>
       </thead>
       <tbody>
+        <tr><td><code>generate_keys.py</code></td><td>Generates Ed25519 key pair — run once before first pipeline execution</td><td>No</td></tr>
         <tr><td><code>generate_test_data.py</code></td><td>AI agent — calls Claude API to generate XML test fixtures</td><td>Yes — primary LLM surface</td></tr>
         <tr><td><code>ISO20022_validator.py</code></td><td>Validates XML against XSD, produces HTML report</td><td>No — processes LLM output</td></tr>
-        <tr><td><code>sender_agent.py</code></td><td>Publishes test messages to Kafka</td><td>No</td></tr>
-        <tr><td><code>receiver_agent.py</code></td><td>Consumes Kafka, validates XML, routes to DLQ</td><td>No — processes LLM output</td></tr>
-        <tr><td><code>reconciliation_report.py</code></td><td>Reads SQLite, produces HTML reconciliation report</td><td>No</td></tr>
+        <tr><td><code>sender_agent.py</code></td><td>Signs messages with Ed25519 private key; publishes to Kafka</td><td>No</td></tr>
+        <tr><td><code>receiver_agent.py</code></td><td>Consumes Kafka; verifies Ed25519 signatures; validates XML; routes to DLQ or tampered topic</td><td>No — processes LLM output</td></tr>
+        <tr><td><code>reconciliation_report.py</code></td><td>Reads SQLite + DuckDB analytics; produces HTML reconciliation report</td><td>No</td></tr>
         <tr><td><code>docker-compose.yml</code></td><td>Confluent Kafka 7.6 single-broker KRaft setup</td><td>No</td></tr>
       </tbody>
     </table>

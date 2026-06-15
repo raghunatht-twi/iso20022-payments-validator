@@ -633,8 +633,8 @@
         </tr>
         <tr>
           <td>Reconciliation Report</td>
-          <td>Python, SQLite, HTML</td>
-          <td>No external dependencies — reads state.db directly and produces a self-contained HTML report following Thoughtworks brand guidelines</td>
+          <td>Python, SQLite, DuckDB, HTML</td>
+          <td>Reads <code>state.db</code> via SQLite for per-message status, then runs four DuckDB analytical queries (schema pass rate, error patterns, category vs outcome, tampered by schema) via DuckDB's native SQLite attachment — no data copying required. Produces a self-contained HTML report following Thoughtworks brand guidelines</td>
         </tr>
       </tbody>
     </table>

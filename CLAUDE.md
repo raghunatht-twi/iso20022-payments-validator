@@ -248,6 +248,19 @@ uv add <package>
 
 All scripts use PEP 723 inline dependency metadata (`# /// script ... # ///`) so `uv run` installs dependencies automatically.
 
+### Python Clean Code Conventions
+
+All six scripts in this repository follow these conventions — maintain them when editing:
+
+- **Naming**: `snake_case` functions/variables, `PascalCase` classes, `SCREAMING_SNAKE_CASE` module-level constants, `_leading_underscore` for private internals
+- **Functions**: one function = one job; extract inner loops and per-item logic into named helpers (e.g. `_item_to_case`, `_send_file`, `_process_message`, `_query_schema_breakdown`)
+- **Type annotations**: every function annotated; use `X | None` (not `Optional[X]`); use `from __future__ import annotations`
+- **Comments**: write none by default — only add a comment when the *why* is non-obvious. Never describe what the code does.
+- **Module docstrings**: one line only
+- **Error handling**: catch only the specific exceptions that are expected at a boundary. Never `except Exception:` unless you re-raise. In `_verify_signature`, catch `(InvalidSignature, binascii.Error)` — not the broad `Exception`.
+- **Resources**: wrap non-context-manager resources in `try/finally` (e.g. `KafkaAdminClient` in `_ensure_topics`)
+- **Analytics functions**: each DuckDB query is its own named function (`_query_*`); each HTML section is its own named function (`_*_html`)
+
 ### Security (OWASP LLM Top 10)
 
 - **LLM06** — domain argument validated against `^[a-z]{4}(\.\d{3}){0,3}$` before any file I/O; rejects path traversal and injection

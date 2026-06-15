@@ -1048,7 +1048,7 @@
       <div class="component amber">
         <div class="component-name">DuckDB 1.x</div>
         <div class="component-role">Analytics Engine</div>
-        <p>Attaches directly to <code>state.db</code> via <code>ATTACH '...' AS state (TYPE sqlite)</code> — no data copying or import step. Runs three analytical queries in <code>reconciliation_report.py</code>: per-schema pass rate breakdown, validation error pattern ranking, and test category vs actual outcome cross-tabulation. Third-party library installed automatically via PEP 723 inline metadata.</p>
+        <p>Attaches directly to <code>state.db</code> via <code>ATTACH '...' AS state (TYPE sqlite)</code> — no data copying or import step. Runs four analytical queries in <code>reconciliation_report.py</code>: per-schema pass rate breakdown, validation error pattern ranking, test category vs actual outcome cross-tabulation, and tampered messages by schema. Each query is its own named function (<code>_query_schema_breakdown</code>, <code>_query_error_patterns</code>, <code>_query_category_outcomes</code>, <code>_query_tampered_by_set</code>). Third-party library installed automatically via PEP 723 inline metadata.</p>
       </div>
       <div class="component green">
         <div class="component-name">Kafka UI (provectuslabs)</div>
