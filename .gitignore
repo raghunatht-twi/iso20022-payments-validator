@@ -1,5 +1,6 @@
 .DS_Store
 reports/
+test_data/
 __pycache__/
 *.pyc
 .venv/
