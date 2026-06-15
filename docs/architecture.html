@@ -552,7 +552,7 @@
       <div class="component green">
         <div class="component-name">generate_test_data.py</div>
         <div class="component-role">AI Agent</div>
-        <p>Reads XSD schemas, calls Claude API, generates 50 XML test messages per schema across three categories. Validates all AI output with lxml before saving. Produces a generation summary HTML report.</p>
+        <p>Reads XSD schemas, calls Claude API, generates 50 XML test messages per schema across three categories. Accepts a domain, a specific message set, or a list of message sets (<code>pain 001 002 005</code>). Validates all AI output with lxml before saving. Produces a generation summary HTML report.</p>
       </div>
       <div class="component teal">
         <div class="component-name">ISO20022_validator.py</div>
@@ -916,7 +916,7 @@
         <tr><td>0b (once)</td><td><code>uv run generate_keys.py</code></td><td>Generate Ed25519 key pair to <code>keys/</code></td></tr>
         <tr><td>1</td><td><code>docker-compose up -d</code></td><td>Start Kafka broker + Kafka UI — wait ~30s for healthcheck</td></tr>
         <tr><td>1a (optional)</td><td>open <code>http://localhost:8080</code></td><td>Open Kafka UI dashboard in browser</td></tr>
-        <tr><td>2 (optional)</td><td><code>uv run generate_test_data.py pain</code></td><td>Generate XML test corpus for all pain schemas</td></tr>
+        <tr><td>2 (optional)</td><td><code>uv run generate_test_data.py pain</code></td><td>Generate XML test corpus for all pain schemas; pass a list to target a subset, e.g. <code>pain 001 002 005</code></td></tr>
         <tr><td>3</td><td><code>uv run sender_agent.py</code></td><td>Publish all XML files to Kafka topics</td></tr>
         <tr><td>4</td><td><code>uv run receiver_agent.py</code></td><td>Consume, validate, deduplicate — Ctrl+C when done</td></tr>
         <tr><td>5</td><td><code>uv run reconciliation_report.py</code></td><td>Generate HTML reconciliation report with DuckDB analytics</td></tr>

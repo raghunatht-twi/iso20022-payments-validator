@@ -98,14 +98,17 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 # Generate ~50 test messages for pain.001
 uv run generate_test_data.py pain 001
 
-# Dot-notation alternative
+# Generate for a specific list of message sets
+uv run generate_test_data.py pain 001 002 005
+
+# Dot-notation alternative (single set)
 uv run generate_test_data.py pain.001
 
 # Generate for all pain message sets
 uv run generate_test_data.py pain
 
 # Override the model (default: claude-sonnet-4-6)
-uv run generate_test_data.py --model=claude-opus-4-8 pain 001
+uv run generate_test_data.py --model=claude-opus-4-8 pain 001 002
 ```
 
 Generated files are saved to `test_data/<domain>/<msg_set>/`:
