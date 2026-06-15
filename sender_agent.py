@@ -5,11 +5,7 @@
 #   "kafka-python>=2.0,<3.0",
 # ]
 # ///
-"""Sender agent — publishes ISO 20022 test messages to per-domain Kafka topics.
-
-Each message is signed with the Ed25519 private key from keys/sender_private.pem.
-The receiver verifies the signature and routes tampered messages to iso20022.tampered.
-"""
+"""Sender agent — signs and publishes ISO 20022 test messages to Kafka."""
 from __future__ import annotations
 
 import base64
@@ -26,26 +22,22 @@ from kafka import KafkaProducer
 from kafka.admin import KafkaAdminClient, NewTopic
 
 
-_BASE_DIR    = Path(__file__).parent
+_BASE_DIR     = Path(__file__).parent
 TEST_DATA_DIR = _BASE_DIR / "test_data"
-SCHEMA_DIR   = _BASE_DIR / "schema"
-STATE_DB     = _BASE_DIR / "state.db"
-_KEYS_DIR    = _BASE_DIR / "keys"
+SCHEMA_DIR    = _BASE_DIR / "schema"
+STATE_DB      = _BASE_DIR / "state.db"
+_KEYS_DIR     = _BASE_DIR / "keys"
 
-_BOOTSTRAP       = "localhost:9092"
-_TOPIC_PREFIX    = "iso20022"
-_DLQ_TOPIC       = f"{_TOPIC_PREFIX}.dlq"
-_TAMPERED_TOPIC  = f"{_TOPIC_PREFIX}.tampered"
+_BOOTSTRAP      = "localhost:9092"
+_TOPIC_PREFIX   = "iso20022"
+_DLQ_TOPIC      = f"{_TOPIC_PREFIX}.dlq"
+_TAMPERED_TOPIC = f"{_TOPIC_PREFIX}.tampered"
 
 
 def _load_private_key() -> Ed25519PrivateKey:
     key_path = _KEYS_DIR / "sender_private.pem"
     if not key_path.exists():
-        print(
-            f"Error: {key_path} not found.\n"
-            "Run:  uv run generate_keys.py",
-            file=sys.stderr,
-        )
+        print(f"Error: {key_path} not found.\nRun:  uv run generate_keys.py", file=sys.stderr)
         sys.exit(1)
     key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
     if not isinstance(key, Ed25519PrivateKey):
@@ -124,17 +116,57 @@ def _schema_name(domain: str, msg_set: str) -> str:
 
 def _ensure_topics(topics: set[str]) -> None:
     admin = KafkaAdminClient(bootstrap_servers=_BOOTSTRAP)
-    existing = set(admin.list_topics())
-    to_create = [
-        NewTopic(t, num_partitions=3, replication_factor=1)
-        for t in topics
-        if t not in existing
-    ]
-    if to_create:
-        admin.create_topics(to_create, validate_only=False)
-        for t in to_create:
-            print(f"  Created topic: {t.name}")
-    admin.close()
+    try:
+        existing = set(admin.list_topics())
+        to_create = [
+            NewTopic(t, num_partitions=3, replication_factor=1)
+            for t in topics
+            if t not in existing
+        ]
+        if to_create:
+            admin.create_topics(to_create, validate_only=False)
+            for t in to_create:
+                print(f"  Created topic: {t.name}")
+    finally:
+        admin.close()
+
+
+def _send_file(
+    conn: sqlite3.Connection,
+    producer: KafkaProducer,
+    private_key: Ed25519PrivateKey,
+    domain: str,
+    msg_set: str,
+    xml_path: Path,
+) -> bool:
+    xml_bytes = xml_path.read_bytes()
+    msg_id    = _message_id(domain, msg_set, xml_bytes)
+    topic     = _topic(domain, msg_set)
+
+    if conn.execute("SELECT 1 FROM sent_messages WHERE message_id = ?", (msg_id,)).fetchone():
+        print(f"  SKIP   {xml_path.relative_to(_BASE_DIR)}  (already in sent log)")
+        return False
+
+    schema_nm = _schema_name(domain, msg_set)
+    now       = datetime.now(timezone.utc).isoformat()
+    payload   = {
+        "message_id":  msg_id,
+        "domain":      domain,
+        "message_set": msg_set,
+        "schema_name": schema_nm,
+        "file_name":   xml_path.name,
+        "sent_at":     now,
+        "xml_content": xml_bytes.decode("utf-8", errors="replace"),
+        "signature":   _sign(private_key, xml_bytes),
+    }
+    producer.send(topic, key=msg_id, value=payload)
+    conn.execute(
+        "INSERT INTO sent_messages VALUES (?,?,?,?,?,?,?)",
+        (msg_id, domain, msg_set, xml_path.name, schema_nm, topic, now),
+    )
+    conn.commit()
+    print(f"  SENT   {topic:<32}  {xml_path.name}  [signed]")
+    return True
 
 
 def main() -> None:
@@ -164,40 +196,10 @@ def main() -> None:
 
     sent = skipped = 0
     for domain, msg_set, xml_path in files:
-        xml_bytes = xml_path.read_bytes()
-        msg_id    = _message_id(domain, msg_set, xml_bytes)
-        topic     = _topic(domain, msg_set)
-
-        already_sent = conn.execute(
-            "SELECT 1 FROM sent_messages WHERE message_id = ?", (msg_id,)
-        ).fetchone()
-
-        if already_sent:
-            print(f"  SKIP   {xml_path.relative_to(_BASE_DIR)}  (already in sent log)")
+        if _send_file(conn, producer, private_key, domain, msg_set, xml_path):
+            sent += 1
+        else:
             skipped += 1
-            continue
-
-        signature   = _sign(private_key, xml_bytes)
-        schema_nm   = _schema_name(domain, msg_set)
-        now         = datetime.now(timezone.utc).isoformat()
-        payload = {
-            "message_id":  msg_id,
-            "domain":      domain,
-            "message_set": msg_set,
-            "schema_name": schema_nm,
-            "file_name":   xml_path.name,
-            "sent_at":     now,
-            "xml_content": xml_bytes.decode("utf-8", errors="replace"),
-            "signature":   signature,
-        }
-        producer.send(topic, key=msg_id, value=payload)
-        conn.execute(
-            "INSERT INTO sent_messages VALUES (?,?,?,?,?,?,?)",
-            (msg_id, domain, msg_set, xml_path.name, schema_nm, topic, now),
-        )
-        conn.commit()
-        print(f"  SENT   {topic:<32}  {xml_path.name}  [signed]")
-        sent += 1
 
     producer.flush()
     producer.close()

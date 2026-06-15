@@ -271,6 +271,29 @@ def _actual_category(requested: str, validated: bool) -> str:
     return "fail"
 
 
+def _item_to_case(
+    item: dict,
+    category: str,
+    schema_name: str,
+    schema: etree.XMLSchema,
+) -> GeneratedCase | None:
+    xml_str = item.get("xml", "")
+    if not xml_str:
+        return None
+    try:
+        element = etree.fromstring(xml_str.encode(), parser=_SAFE_PARSER)
+        validated = schema.validate(element)
+    except etree.XMLSyntaxError:
+        validated = False
+    return GeneratedCase(
+        xml=xml_str,
+        description=item.get("description", ""),
+        requested_category=category,
+        actual_category=_actual_category(category, validated),
+        schema_name=schema_name,
+    )
+
+
 def _generate_cases_for_category(
     client: anthropic.Anthropic,
     schema_path: Path,
@@ -310,23 +333,9 @@ def _generate_cases_for_category(
             continue
 
         for item in items:
-            xml_str = item.get("xml", "")
-            description = item.get("description", "")
-            if not xml_str:
-                continue
-            try:
-                element = etree.fromstring(xml_str.encode(), parser=_SAFE_PARSER)
-                validated = schema.validate(element)
-            except etree.XMLSyntaxError:
-                validated = False
-
-            cases.append(GeneratedCase(
-                xml=xml_str,
-                description=description,
-                requested_category=category,
-                actual_category=_actual_category(category, validated),
-                schema_name=schema_path.name,
-            ))
+            case = _item_to_case(item, category, schema_path.name, schema)
+            if case is not None:
+                cases.append(case)
 
         if len(cases) < target and attempt < _MAX_RETRIES:
             time.sleep(2)

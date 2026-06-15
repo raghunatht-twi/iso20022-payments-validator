@@ -6,19 +6,11 @@
 #   "lxml>=5.0,<6.0",
 # ]
 # ///
-"""Receiver agent — one consumer thread per domain/message-set.
-
-Processing guarantee: at-least-once Kafka delivery + idempotent SQLite write
-= exactly-once processing semantics. Duplicate Kafka redeliveries and
-re-sent messages are both detected via the processed_messages primary key.
-
-Tamper detection: each message carries an Ed25519 signature over its xml_content.
-The receiver verifies the signature before XSD validation. Messages that fail
-verification are forwarded to iso20022.tampered and recorded in tampered_messages.
-"""
+"""Receiver agent — one consumer thread per domain/message-set."""
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import signal
 import sqlite3
@@ -39,12 +31,12 @@ SCHEMA_DIR = _BASE_DIR / "schema"
 STATE_DB   = _BASE_DIR / "state.db"
 _KEYS_DIR  = _BASE_DIR / "keys"
 
-_BOOTSTRAP       = "localhost:9092"
-_TOPIC_PREFIX    = "iso20022"
-_DLQ_TOPIC       = f"{_TOPIC_PREFIX}.dlq"
-_TAMPERED_TOPIC  = f"{_TOPIC_PREFIX}.tampered"
-_CONSUMER_GROUP  = "iso20022-receivers"
-_POLL_MS         = 1_000
+_BOOTSTRAP      = "localhost:9092"
+_TOPIC_PREFIX   = "iso20022"
+_DLQ_TOPIC      = f"{_TOPIC_PREFIX}.dlq"
+_TAMPERED_TOPIC = f"{_TOPIC_PREFIX}.tampered"
+_CONSUMER_GROUP = "iso20022-receivers"
+_POLL_MS        = 1_000
 
 _SAFE_PARSER = etree.XMLParser(
     resolve_entities=False,
@@ -63,11 +55,7 @@ def _topic(domain: str, msg_set: str) -> str:
 def _load_public_key() -> Ed25519PublicKey:
     key_path = _KEYS_DIR / "sender_public.pem"
     if not key_path.exists():
-        print(
-            f"Error: {key_path} not found.\n"
-            "Run:  uv run generate_keys.py",
-            file=sys.stderr,
-        )
+        print(f"Error: {key_path} not found.\nRun:  uv run generate_keys.py", file=sys.stderr)
         sys.exit(1)
     key = serialization.load_pem_public_key(key_path.read_bytes())
     if not isinstance(key, Ed25519PublicKey):
@@ -83,7 +71,7 @@ def _verify_signature(public_key: Ed25519PublicKey, xml_content: str, signature_
             xml_content.encode("utf-8", errors="replace"),
         )
         return True
-    except (InvalidSignature, Exception):
+    except (InvalidSignature, binascii.Error):
         return False
 
 
@@ -178,6 +166,68 @@ def _record_tampered(
     conn.commit()
 
 
+def _process_message(
+    conn: sqlite3.Connection,
+    consumer: KafkaConsumer,
+    producer: KafkaProducer,
+    public_key: Ed25519PublicKey,
+    schema: etree.XMLSchema | None,
+    domain: str,
+    msg_set: str,
+    label: str,
+    payload: dict,
+) -> None:
+    msg_id      = payload.get("message_id", "")
+    file_name   = payload.get("file_name", "")
+    xml_content = payload.get("xml_content", "")
+    signature   = payload.get("signature", "")
+
+    if _is_already_processed(conn, msg_id):
+        print(f"  {label} DUPLICATE  {file_name}")
+        _record_duplicate(conn, msg_id, domain, msg_set, file_name)
+        consumer.commit()
+        return
+
+    if not signature:
+        print(f"  {label} TAMPERED   {file_name}  — no signature present")
+        producer.send(
+            _TAMPERED_TOPIC,
+            key=msg_id.encode(),
+            value=json.dumps({**payload, "tamper_reason": "missing signature"}).encode(),
+        )
+        _record_tampered(conn, msg_id, domain, msg_set, file_name)
+        consumer.commit()
+        return
+
+    if not _verify_signature(public_key, xml_content, signature):
+        print(f"  {label} TAMPERED   {file_name}  — signature verification failed")
+        producer.send(
+            _TAMPERED_TOPIC,
+            key=msg_id.encode(),
+            value=json.dumps({**payload, "tamper_reason": "signature mismatch"}).encode(),
+        )
+        _record_tampered(conn, msg_id, domain, msg_set, file_name)
+        consumer.commit()
+        return
+
+    valid, error = _validate(xml_content, schema) if schema else (False, "Schema unavailable")
+
+    if valid:
+        print(f"  {label} PASS       {file_name}")
+        _record_processed(conn, msg_id, domain, msg_set, file_name, "pass", None, None)
+    else:
+        print(f"  {label} FAIL       {file_name}  — {error[:100]}")
+        producer.send(
+            _DLQ_TOPIC,
+            key=msg_id.encode(),
+            value=json.dumps({**payload, "validation_error": error}).encode(),
+        )
+        _record_processed(conn, msg_id, domain, msg_set, file_name, "fail", error, _DLQ_TOPIC)
+
+    # Commit offset only after DB write — guarantees idempotency on crash
+    consumer.commit()
+
+
 def _run_receiver(
     domain: str,
     msg_set: str,
@@ -203,69 +253,10 @@ def _run_receiver(
             batch = consumer.poll(timeout_ms=_POLL_MS)
             for records in batch.values():
                 for record in records:
-                    payload     = record.value
-                    msg_id      = payload.get("message_id", "")
-                    file_name   = payload.get("file_name", "")
-                    xml_content = payload.get("xml_content", "")
-                    signature   = payload.get("signature", "")
-
-                    # ── Duplicate check ──────────────────────────────────────
-                    if _is_already_processed(conn, msg_id):
-                        print(f"  {label} DUPLICATE  {file_name}")
-                        _record_duplicate(conn, msg_id, domain, msg_set, file_name)
-                        consumer.commit()
-                        continue
-
-                    # ── Tamper check ─────────────────────────────────────────
-                    if not signature:
-                        print(f"  {label} TAMPERED   {file_name}  — no signature present")
-                        producer.send(
-                            _TAMPERED_TOPIC,
-                            key=msg_id.encode(),
-                            value=json.dumps({**payload, "tamper_reason": "missing signature"}).encode(),
-                        )
-                        _record_tampered(conn, msg_id, domain, msg_set, file_name)
-                        consumer.commit()
-                        continue
-
-                    if not _verify_signature(public_key, xml_content, signature):
-                        print(f"  {label} TAMPERED   {file_name}  — signature verification failed")
-                        producer.send(
-                            _TAMPERED_TOPIC,
-                            key=msg_id.encode(),
-                            value=json.dumps({**payload, "tamper_reason": "signature mismatch"}).encode(),
-                        )
-                        _record_tampered(conn, msg_id, domain, msg_set, file_name)
-                        consumer.commit()
-                        continue
-
-                    # ── XSD validation ───────────────────────────────────────
-                    if schema is None:
-                        valid, error = False, "Schema unavailable"
-                    else:
-                        valid, error = _validate(xml_content, schema)
-
-                    if valid:
-                        print(f"  {label} PASS       {file_name}")
-                        _record_processed(
-                            conn, msg_id, domain, msg_set, file_name,
-                            "pass", None, None,
-                        )
-                    else:
-                        print(f"  {label} FAIL       {file_name}  — {error[:100]}")
-                        dlq_payload = {**payload, "validation_error": error}
-                        producer.send(
-                            _DLQ_TOPIC,
-                            key=msg_id.encode(),
-                            value=json.dumps(dlq_payload).encode(),
-                        )
-                        _record_processed(
-                            conn, msg_id, domain, msg_set, file_name,
-                            "fail", error, _DLQ_TOPIC,
-                        )
-
-                    # Commit offset only after DB write — guarantees idempotency on crash
-                    consumer.commit()
+                    _process_message(
+                        conn, consumer, producer, public_key, schema,
+                        domain, msg_set, label, record.value,
+                    )
     finally:
         consumer.close()
         conn.close()
@@ -273,10 +264,7 @@ def _run_receiver(
 
 def main() -> None:
     if not STATE_DB.exists():
-        print(
-            f"Error: {STATE_DB} not found. Run sender_agent.py first.",
-            file=sys.stderr,
-        )
+        print(f"Error: {STATE_DB} not found. Run sender_agent.py first.", file=sys.stderr)
         sys.exit(1)
 
     public_key = _load_public_key()
@@ -290,11 +278,7 @@ def main() -> None:
         print(f"No XSD schemas found under {SCHEMA_DIR}", file=sys.stderr)
         sys.exit(1)
 
-    producer = KafkaProducer(
-        bootstrap_servers=_BOOTSTRAP,
-        acks="all",
-        retries=5,
-    )
+    producer = KafkaProducer(bootstrap_servers=_BOOTSTRAP, acks="all", retries=5)
 
     print(f"Starting {len(schemas)} receiver agent(s) ...\n")
     threads = [

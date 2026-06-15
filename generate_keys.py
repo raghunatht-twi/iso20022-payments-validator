@@ -4,15 +4,7 @@
 #   "cryptography>=42.0,<46.0",
 # ]
 # ///
-"""Generate an Ed25519 key pair for ISO 20022 message signing.
-
-Run once before starting the pipeline:
-    uv run generate_keys.py
-
-Saves:
-    keys/sender_private.pem  — sign with this (sender only, never commit)
-    keys/sender_public.pem   — verify with this (distribute to receivers)
-"""
+"""Generate an Ed25519 key pair for ISO 20022 message signing."""
 from __future__ import annotations
 
 import sys
@@ -48,7 +40,7 @@ def main() -> None:
             encryption_algorithm=serialization.NoEncryption(),
         )
     )
-    private_path.chmod(0o600)  # owner read/write only
+    private_path.chmod(0o600)
 
     public_path.write_bytes(
         private_key.public_key().public_bytes(

@@ -35,8 +35,6 @@ _SAFE_PARSER = etree.XMLParser(
     load_dtd=False,
 )
 
-# Four lowercase letters, optionally followed by up to three dot-separated
-# three-digit segments — e.g. "pain" or "pain.001.001"
 _DOMAIN_RE = re.compile(r"^[a-z]{4}(\.\d{3}){0,3}$")
 
 _NAMESPACE_RE = re.compile(r"\{[^}]+\}")
@@ -58,9 +56,7 @@ _DOMAIN_DESCRIPTIONS: dict[str, str] = {
     "remt": "Payments Remittance Advice",
 }
 
-# Each entry: (pattern matched against the raw lxml error message, suggestion template).
-# Placeholders {0}, {1} map to regex capture groups; use {{}} for literal braces.
-# The Ccy entry must precede the general 'pattern' facet rule to avoid being shadowed.
+# Ccy entry must precede the general 'pattern' facet rule — otherwise it's shadowed.
 _SUGGESTION_RULES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"not expected.*Expected is[^{]*\{[^}]+\}(\w+)", re.DOTALL),

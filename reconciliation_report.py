@@ -4,12 +4,7 @@
 #   "duckdb>=1.0,<2.0",
 # ]
 # ///
-"""Reconciliation report — proves every sent message was processed exactly once.
-
-DuckDB analytics sections provide per-schema breakdowns, error pattern analysis,
-and test category vs actual outcome comparisons, all sourced from the SQLite state.db
-via DuckDB's native SQLite attachment.
-"""
+"""Reconciliation report — proves every sent message was processed exactly once."""
 from __future__ import annotations
 
 import html
@@ -22,8 +17,8 @@ from pathlib import Path
 import duckdb
 
 
-_BASE_DIR = Path(__file__).parent
-STATE_DB = _BASE_DIR / "state.db"
+_BASE_DIR  = Path(__file__).parent
+STATE_DB   = _BASE_DIR / "state.db"
 REPORT_DIR = _BASE_DIR / "reports"
 
 _TW_COLOURS: dict[str, str] = {
@@ -53,8 +48,6 @@ _STATUS_LABELS = {
 }
 
 
-# ── Analytics dataclass ────────────────────────────────────────────────────────
-
 @dataclass
 class AnalyticsResult:
     schema_breakdown:  list[tuple] = field(default_factory=list)
@@ -63,91 +56,99 @@ class AnalyticsResult:
     tampered_by_set:   list[tuple] = field(default_factory=list)
 
 
-# ── DuckDB analytics ───────────────────────────────────────────────────────────
+def _query_schema_breakdown(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
+    return conn.execute("""
+        SELECT
+            s.message_set,
+            COUNT(*)                                                              AS total_sent,
+            COUNT(p.message_id)                                                   AS processed,
+            SUM(CASE WHEN p.validation_status = 'pass' THEN 1 ELSE 0 END)        AS pass_count,
+            SUM(CASE WHEN p.validation_status = 'fail' THEN 1 ELSE 0 END)        AS fail_count,
+            COUNT(*) - COUNT(p.message_id)                                        AS pending,
+            ROUND(
+                CASE WHEN COUNT(p.message_id) > 0
+                     THEN SUM(CASE WHEN p.validation_status = 'pass' THEN 1 ELSE 0 END)
+                          * 100.0 / COUNT(p.message_id)
+                     ELSE 0 END, 1
+            )                                                                     AS pass_rate
+        FROM state.sent_messages s
+        LEFT JOIN state.processed_messages p ON s.message_id = p.message_id
+        GROUP BY s.message_set
+        ORDER BY s.message_set
+    """).fetchall()
+
+
+def _query_error_patterns(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
+    return conn.execute("""
+        SELECT
+            CASE
+                WHEN error_detail LIKE '%facet ''enumeration''%'  THEN 'Invalid enumeration value'
+                WHEN error_detail LIKE '%facet ''pattern''%'       THEN 'Pattern / format violation'
+                WHEN error_detail LIKE '%facet ''maxLength''%'     THEN 'String exceeds max length'
+                WHEN error_detail LIKE '%facet ''minLength''%'     THEN 'Empty required field'
+                WHEN error_detail LIKE '%facet ''minInclusive''%'  THEN 'Value below minimum'
+                WHEN error_detail LIKE '%facet ''totalDigits''%'   THEN 'Too many digits'
+                WHEN error_detail LIKE '%facet ''fractionDigits''%' THEN 'Too many decimal places'
+                WHEN error_detail LIKE '%Missing child element%'   THEN 'Missing required element'
+                WHEN error_detail LIKE '%not expected%'            THEN 'Wrong element order'
+                WHEN error_detail LIKE '%XML syntax error%'        THEN 'XML syntax error'
+                WHEN error_detail LIKE '%attribute ''Ccy''%'       THEN 'Missing currency (Ccy) attribute'
+                ELSE 'Other validation error'
+            END                              AS error_category,
+            COUNT(*)                         AS occurrences,
+            COUNT(DISTINCT message_set)      AS schemas_affected
+        FROM state.processed_messages
+        WHERE validation_status = 'fail'
+          AND error_detail IS NOT NULL
+        GROUP BY error_category
+        ORDER BY occurrences DESC
+    """).fetchall()
+
+
+def _query_category_outcomes(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
+    return conn.execute("""
+        SELECT
+            CASE
+                WHEN file_name LIKE 'gen-pass-%' THEN 'gen-pass'
+                WHEN file_name LIKE 'gen-fail-%' THEN 'gen-fail'
+                WHEN file_name LIKE 'gen-edge-%' THEN 'gen-edge'
+                ELSE 'hand-crafted'
+            END              AS test_category,
+            validation_status,
+            COUNT(*)         AS count
+        FROM state.processed_messages
+        GROUP BY test_category, validation_status
+        ORDER BY test_category, validation_status
+    """).fetchall()
+
+
+def _query_tampered_by_set(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
+    return conn.execute("""
+        SELECT
+            domain || '.' || message_set AS schema_label,
+            COUNT(*)                     AS tampered_count
+        FROM state.tampered_messages
+        GROUP BY schema_label
+        ORDER BY tampered_count DESC
+    """).fetchall()
+
 
 def _run_analytics(db_path: Path) -> AnalyticsResult | None:
     try:
         conn = duckdb.connect()
         conn.execute(f"ATTACH '{db_path}' AS state (TYPE sqlite)")
-
-        schema_breakdown = conn.execute("""
-            SELECT
-                s.message_set,
-                COUNT(*)                                                              AS total_sent,
-                COUNT(p.message_id)                                                   AS processed,
-                SUM(CASE WHEN p.validation_status = 'pass' THEN 1 ELSE 0 END)        AS pass_count,
-                SUM(CASE WHEN p.validation_status = 'fail' THEN 1 ELSE 0 END)        AS fail_count,
-                COUNT(*) - COUNT(p.message_id)                                        AS pending,
-                ROUND(
-                    CASE WHEN COUNT(p.message_id) > 0
-                         THEN SUM(CASE WHEN p.validation_status = 'pass' THEN 1 ELSE 0 END)
-                              * 100.0 / COUNT(p.message_id)
-                         ELSE 0 END, 1
-                )                                                                     AS pass_rate
-            FROM state.sent_messages s
-            LEFT JOIN state.processed_messages p ON s.message_id = p.message_id
-            GROUP BY s.message_set
-            ORDER BY s.message_set
-        """).fetchall()
-
-        error_patterns = conn.execute("""
-            SELECT
-                CASE
-                    WHEN error_detail LIKE '%facet ''enumeration''%'  THEN 'Invalid enumeration value'
-                    WHEN error_detail LIKE '%facet ''pattern''%'       THEN 'Pattern / format violation'
-                    WHEN error_detail LIKE '%facet ''maxLength''%'     THEN 'String exceeds max length'
-                    WHEN error_detail LIKE '%facet ''minLength''%'     THEN 'Empty required field'
-                    WHEN error_detail LIKE '%facet ''minInclusive''%'  THEN 'Value below minimum'
-                    WHEN error_detail LIKE '%facet ''totalDigits''%'   THEN 'Too many digits'
-                    WHEN error_detail LIKE '%facet ''fractionDigits''%' THEN 'Too many decimal places'
-                    WHEN error_detail LIKE '%Missing child element%'   THEN 'Missing required element'
-                    WHEN error_detail LIKE '%not expected%'            THEN 'Wrong element order'
-                    WHEN error_detail LIKE '%XML syntax error%'        THEN 'XML syntax error'
-                    WHEN error_detail LIKE '%attribute ''Ccy''%'       THEN 'Missing currency (Ccy) attribute'
-                    ELSE 'Other validation error'
-                END                              AS error_category,
-                COUNT(*)                         AS occurrences,
-                COUNT(DISTINCT message_set)      AS schemas_affected
-            FROM state.processed_messages
-            WHERE validation_status = 'fail'
-              AND error_detail IS NOT NULL
-            GROUP BY error_category
-            ORDER BY occurrences DESC
-        """).fetchall()
-
-        category_outcomes = conn.execute("""
-            SELECT
-                CASE
-                    WHEN file_name LIKE 'gen-pass-%' THEN 'gen-pass'
-                    WHEN file_name LIKE 'gen-fail-%' THEN 'gen-fail'
-                    WHEN file_name LIKE 'gen-edge-%' THEN 'gen-edge'
-                    ELSE 'hand-crafted'
-                END              AS test_category,
-                validation_status,
-                COUNT(*)         AS count
-            FROM state.processed_messages
-            GROUP BY test_category, validation_status
-            ORDER BY test_category, validation_status
-        """).fetchall()
-
-        tampered_by_set = conn.execute("""
-            SELECT
-                domain || '.' || message_set AS schema_label,
-                COUNT(*)                     AS tampered_count
-            FROM state.tampered_messages
-            GROUP BY schema_label
-            ORDER BY tampered_count DESC
-        """).fetchall()
-
+        result = AnalyticsResult(
+            schema_breakdown=_query_schema_breakdown(conn),
+            error_patterns=_query_error_patterns(conn),
+            category_outcomes=_query_category_outcomes(conn),
+            tampered_by_set=_query_tampered_by_set(conn),
+        )
         conn.close()
-        return AnalyticsResult(schema_breakdown, error_patterns, category_outcomes, tampered_by_set)
-
+        return result
     except Exception as exc:
         print(f"Warning: DuckDB analytics failed — {exc}", file=sys.stderr)
         return None
 
-
-# ── Existing report helpers ────────────────────────────────────────────────────
 
 def _summary_card(label: str, value: str | int, colour: str) -> str:
     return (
@@ -161,7 +162,7 @@ def _summary_card(label: str, value: str | int, colour: str) -> str:
 
 def _status_badge(status: str) -> str:
     colour = _STATUS_COLOURS.get(status, "#47A1AD")
-    label = _STATUS_LABELS.get(status, status.upper())
+    label  = _STATUS_LABELS.get(status, status.upper())
     return (
         f'<span style="background:{colour};color:#fff;padding:2px 10px;'
         f"border-radius:3px;font-size:0.78rem;font-weight:600;"
@@ -176,11 +177,23 @@ def _reconciliation_status(sent_row: sqlite3.Row, processed: dict) -> str:
     return processed[msg_id]["validation_status"]
 
 
+def _pass_rate_bar(rate: float) -> str:
+    colour = "#689E78" if rate >= 80 else "#CC850A" if rate >= 50 else "#F2617A"
+    return (
+        f'<div style="display:flex;align-items:center;gap:0.5rem;">'
+        f'<div style="flex:1;background:#e0eaee;border-radius:3px;height:8px;">'
+        f'<div style="width:{rate}%;background:{colour};border-radius:3px;height:8px;"></div>'
+        f'</div>'
+        f'<span style="font-size:0.8rem;font-weight:600;color:{colour};min-width:42px;">{rate}%</span>'
+        f'</div>'
+    )
+
+
 def _build_rows(sent: list[sqlite3.Row], processed: dict) -> str:
     rows = []
     for s in sent:
         status = _reconciliation_status(s, processed)
-        proc = processed.get(s["message_id"])
+        proc   = processed.get(s["message_id"])
         error_cell = ""
         if proc and proc["error_detail"]:
             err = html.escape(proc["error_detail"][:200])
@@ -237,20 +250,6 @@ def _build_duplicate_rows(duplicates: list[sqlite3.Row]) -> str:
     )
 
 
-# ── Analytics HTML helpers ─────────────────────────────────────────────────────
-
-def _pass_rate_bar(rate: float) -> str:
-    colour = "#689E78" if rate >= 80 else "#CC850A" if rate >= 50 else "#F2617A"
-    return (
-        f'<div style="display:flex;align-items:center;gap:0.5rem;">'
-        f'<div style="flex:1;background:#e0eaee;border-radius:3px;height:8px;">'
-        f'<div style="width:{rate}%;background:{colour};border-radius:3px;height:8px;"></div>'
-        f'</div>'
-        f'<span style="font-size:0.8rem;font-weight:600;color:{colour};min-width:42px;">{rate}%</span>'
-        f'</div>'
-    )
-
-
 def _build_schema_breakdown_rows(rows: list[tuple]) -> str:
     if not rows:
         return "<tr><td colspan='7' style='text-align:center;color:#888;padding:1.5rem;'>No data.</td></tr>"
@@ -301,7 +300,6 @@ def _build_category_outcome_rows(rows: list[tuple]) -> str:
     if not rows:
         return "<tr><td colspan='4' style='text-align:center;color:#888;padding:1.5rem;'>No data.</td></tr>"
 
-    # Group by category to compute totals for % calculation
     totals: dict[str, int] = {}
     for cat, _, count in rows:
         totals[cat] = totals.get(cat, 0) + count
@@ -313,9 +311,9 @@ def _build_category_outcome_rows(rows: list[tuple]) -> str:
         if cat != prev_cat:
             cat_cell = f"<strong>{html.escape(str(cat))}</strong>"
             prev_cat = cat
-        pct = round(count / totals[cat] * 100, 1) if totals[cat] else 0
+        pct    = round(count / totals[cat] * 100, 1) if totals[cat] else 0
         colour = "#689E78" if status == "pass" else "#F2617A"
-        note = ""
+        note   = ""
         if (cat == "gen-pass" and status == "fail") or (cat == "gen-edge" and status == "fail"):
             note = ' <span style="color:#CC850A;font-size:0.75rem;">(unexpected — AI recategorised)</span>'
         if cat == "gen-fail" and status == "pass":
@@ -353,40 +351,13 @@ def _build_tampered_by_set_rows(rows: list[tuple]) -> str:
     return "\n".join(out)
 
 
-def _analytics_html(analytics: AnalyticsResult | None) -> str:
-    if analytics is None:
-        return ""
+_DUCKDB_BADGE = '<span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span>'
 
-    schema_rows      = _build_schema_breakdown_rows(analytics.schema_breakdown)
-    error_rows       = _build_error_pattern_rows(analytics.error_patterns)
-    category_rows    = _build_category_outcome_rows(analytics.category_outcomes)
-    tampered_set_rows = _build_tampered_by_set_rows(analytics.tampered_by_set)
 
-    tampered_analytics_section = ""
-    if analytics.tampered_by_set:
-        tampered_analytics_section = f"""
-    <section>
-      <h2>Analytics — Tampered Messages by Schema <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
-      <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
-        Messages whose Ed25519 signature failed verification, grouped by ISO 20022 message set.
-        These were forwarded to <code>iso20022.tampered</code> and excluded from XSD validation.
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Schema</th>
-            <th>Tampered Count</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tampered_set_rows}
-        </tbody>
-      </table>
-    </section>"""
-
+def _schema_breakdown_html(rows: list[tuple]) -> str:
     return f"""
     <section>
-      <h2>Analytics — Schema Breakdown <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
+      <h2>Analytics — Schema Breakdown {_DUCKDB_BADGE}</h2>
       <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
         Pass rate and processing status grouped by ISO 20022 message set.
       </p>
@@ -403,13 +374,16 @@ def _analytics_html(analytics: AnalyticsResult | None) -> str:
           </tr>
         </thead>
         <tbody>
-          {schema_rows}
+          {_build_schema_breakdown_rows(rows)}
         </tbody>
       </table>
-    </section>
+    </section>"""
 
+
+def _error_patterns_html(rows: list[tuple]) -> str:
+    return f"""
     <section>
-      <h2>Analytics — Validation Error Patterns <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
+      <h2>Analytics — Validation Error Patterns {_DUCKDB_BADGE}</h2>
       <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
         Most common categories of XSD validation failure across all processed messages.
       </p>
@@ -422,13 +396,16 @@ def _analytics_html(analytics: AnalyticsResult | None) -> str:
           </tr>
         </thead>
         <tbody>
-          {error_rows}
+          {_build_error_pattern_rows(rows)}
         </tbody>
       </table>
-    </section>
+    </section>"""
 
+
+def _category_outcomes_html(rows: list[tuple]) -> str:
+    return f"""
     <section>
-      <h2>Analytics — Test Category vs Actual Outcome <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
+      <h2>Analytics — Test Category vs Actual Outcome {_DUCKDB_BADGE}</h2>
       <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
         How AI-generated test files performed against the XSD — surfacing any mismatches
         between the intended category and the actual validation result.
@@ -443,14 +420,46 @@ def _analytics_html(analytics: AnalyticsResult | None) -> str:
           </tr>
         </thead>
         <tbody>
-          {category_rows}
+          {_build_category_outcome_rows(rows)}
         </tbody>
       </table>
-    </section>
-    {tampered_analytics_section}"""
+    </section>"""
 
 
-# ── Report generation ──────────────────────────────────────────────────────────
+def _tampered_by_set_html(rows: list[tuple]) -> str:
+    if not rows:
+        return ""
+    return f"""
+    <section>
+      <h2>Analytics — Tampered Messages by Schema {_DUCKDB_BADGE}</h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
+        Messages whose Ed25519 signature failed verification, grouped by ISO 20022 message set.
+        These were forwarded to <code>iso20022.tampered</code> and excluded from XSD validation.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Schema</th>
+            <th>Tampered Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {_build_tampered_by_set_rows(rows)}
+        </tbody>
+      </table>
+    </section>"""
+
+
+def _analytics_html(analytics: AnalyticsResult | None) -> str:
+    if analytics is None:
+        return ""
+    return (
+        _schema_breakdown_html(analytics.schema_breakdown)
+        + _error_patterns_html(analytics.error_patterns)
+        + _category_outcomes_html(analytics.category_outcomes)
+        + _tampered_by_set_html(analytics.tampered_by_set)
+    )
+
 
 def generate_report(
     sent: list[sqlite3.Row],
@@ -460,33 +469,32 @@ def generate_report(
     analytics: AnalyticsResult | None = None,
 ) -> Path:
     REPORT_DIR.mkdir(exist_ok=True)
-    ts = datetime.now()
+    ts          = datetime.now()
     report_path = REPORT_DIR / f"reconciliation_{ts.strftime('%Y%m%d_%H%M%S')}.html"
 
-    total_sent = len(sent)
-    n_pass = sum(1 for s in sent if _reconciliation_status(s, processed) == "pass")
-    n_fail = sum(1 for s in sent if _reconciliation_status(s, processed) == "fail")
+    total_sent    = len(sent)
+    n_pass        = sum(1 for s in sent if _reconciliation_status(s, processed) == "pass")
+    n_fail        = sum(1 for s in sent if _reconciliation_status(s, processed) == "fail")
     n_unprocessed = sum(1 for s in sent if _reconciliation_status(s, processed) == "not_processed")
-    n_duplicates = len(duplicates)
-    n_tampered = len(tampered)
-    fully_reconciled = n_unprocessed == 0
+    n_duplicates  = len(duplicates)
+    n_tampered    = len(tampered)
 
     reconciliation_verdict = (
         '<p style="color:#689E78;font-weight:700;font-size:1.1rem;">&#10003; Fully reconciled — '
         "every sent message has been processed exactly once.</p>"
-        if fully_reconciled
+        if n_unprocessed == 0
         else f'<p style="color:#F2617A;font-weight:700;font-size:1.1rem;">&#9888; Not fully reconciled — '
         f"{n_unprocessed} message(s) have not yet been processed.</p>"
     )
 
     css_vars = "\n".join(f"  --{k}: {v};" for k, v in _TW_COLOURS.items())
     cards = (
-        _summary_card("Total Sent", total_sent, "#003D4F")
-        + _summary_card("Pass", n_pass, "#689E78")
-        + _summary_card("Fail → DLQ", n_fail, "#F2617A")
-        + _summary_card("Not Processed", n_unprocessed, "#CC850A")
-        + _summary_card("Duplicates Caught", n_duplicates, "#634F7D")
-        + _summary_card("Tampered", n_tampered, "#F2617A")
+        _summary_card("Total Sent",        total_sent,   "#003D4F")
+        + _summary_card("Pass",            n_pass,       "#689E78")
+        + _summary_card("Fail → DLQ",      n_fail,       "#F2617A")
+        + _summary_card("Not Processed",   n_unprocessed, "#CC850A")
+        + _summary_card("Duplicates",      n_duplicates,  "#634F7D")
+        + _summary_card("Tampered",        n_tampered,    "#F2617A")
     )
 
     doc = f"""<!DOCTYPE html>
@@ -619,8 +627,6 @@ def generate_report(
     return report_path
 
 
-# ── Entry point ────────────────────────────────────────────────────────────────
-
 def main() -> None:
     if not STATE_DB.exists():
         print(
@@ -656,8 +662,8 @@ def main() -> None:
         sys.exit(1)
 
     n_unprocessed = sum(1 for s in sent if s["message_id"] not in processed)
-    n_pass = sum(1 for p in processed.values() if p["validation_status"] == "pass")
-    n_fail = sum(1 for p in processed.values() if p["validation_status"] == "fail")
+    n_pass        = sum(1 for p in processed.values() if p["validation_status"] == "pass")
+    n_fail        = sum(1 for p in processed.values() if p["validation_status"] == "fail")
 
     print(f"Sent     : {len(sent)}")
     print(f"Pass     : {n_pass}")
