@@ -9,6 +9,7 @@ This repository contains ISO 20022 XSD schemas and a suite of tools for the **pa
 - **Validator** — validates XML messages against XSD schemas, produces HTML reports
 - **Test Data Generator** — AI agent that generates synthetic XML test fixtures using Claude
 - **Kafka Pipeline** — multi-agent system that streams messages through Kafka, validates them, and produces a reconciliation report proving exactly-once processing
+- **Message Integrity** — Ed25519 digital signatures ensure messages are not tampered in transit
 
 ## Directory Structure
 
@@ -23,19 +24,33 @@ test_data/
     └── <message-set>/      e.g. 001/
         └── *.xml           hand-crafted and generated (gen-pass-NNN, gen-fail-NNN, gen-edge-NNN)
 
+keys/                       Ed25519 key pair (gitignored — NEVER commit)
+    sender_private.pem      signs every outgoing Kafka message
+    sender_public.pem       verifies signatures in the receiver
+
 docs/
 └── architecture.html               System architecture document
 └── executive-report.html           Business value and executive summary
 └── owasp-llm-security-report.html  OWASP LLM Top 10 security assessment
 
 reports/                    generated HTML reports (gitignored)
-state.db                    SQLite pipeline state — sent, processed, duplicates (gitignored)
+state.db                    SQLite pipeline state — sent, processed, duplicates, tampered (gitignored)
 docker-compose.yml          Confluent Kafka 7.6 + Kafka UI (ports 9092 and 8080, KRaft mode)
 ```
 
 Schemas and test fixtures are co-organised by the same `domain/message-set` hierarchy as the ISO 20022 naming convention.
 
 ## Scripts
+
+### generate_keys.py
+
+Generates an Ed25519 key pair. Run **once** before the first pipeline run. Errors if the private key already exists (prevents accidental rotation).
+
+```bash
+uv run generate_keys.py
+# Writes: keys/sender_private.pem  (chmod 0o600 — owner read/write only)
+#         keys/sender_public.pem   (safe to distribute)
+```
 
 ### ISO20022_validator.py
 
@@ -63,22 +78,24 @@ Default model: `claude-sonnet-4-6`. Adaptive thinking enabled automatically for 
 
 ### sender_agent.py
 
-Discovers all XML test files under `test_data/` and publishes each to its Kafka topic (`iso20022.<domain>.<msg_set>`). Idempotent — re-runs skip files already recorded in `state.db`. Requires Kafka running.
+Discovers all XML test files under `test_data/` and publishes each to its Kafka topic (`iso20022.<domain>.<msg_set>`). Signs every message with the Ed25519 private key from `keys/sender_private.pem`. Idempotent — re-runs skip files already recorded in `state.db`. Requires Kafka running.
 
 ```bash
 uv run sender_agent.py
 ```
 
-Message ID = `sha256(domain + msg_set + xml_bytes)` — scoped to prevent cross-domain collisions.
+Message ID = `sha256(domain + msg_set + xml_bytes)` — scoped to prevent cross-domain collisions. Kafka payload includes a `"signature"` field (base64-encoded Ed25519 signature over the raw XML bytes).
 
 ### receiver_agent.py
 
 Spawns one consumer thread per domain/message-set (auto-discovered from `schema/`). Each thread:
 1. Checks `state.db` for duplicates (`INSERT OR IGNORE` on `message_id PRIMARY KEY`)
-2. Validates XML against the XSD using lxml
-3. On pass: records to `processed_messages`
-4. On fail: forwards to `iso20022.dlq`, records error in `processed_messages`
-5. Commits Kafka offset only after DB write (guarantees at-least-once + idempotent = exactly-once)
+2. **Verifies Ed25519 signature** against `keys/sender_public.pem`
+   - Missing or invalid → forward to `iso20022.tampered`, record in `tampered_messages`, skip XSD validation
+3. Validates XML against the XSD using lxml
+4. On pass: records to `processed_messages`
+5. On fail: forwards to `iso20022.dlq`, records error in `processed_messages`
+6. Commits Kafka offset only after DB write (guarantees at-least-once + idempotent = exactly-once)
 
 ```bash
 uv run receiver_agent.py    # Ctrl+C to stop
@@ -89,12 +106,14 @@ uv run receiver_agent.py    # Ctrl+C to stop
 Reads `state.db` via SQLite and runs analytical queries via DuckDB (which attaches to `state.db` natively). Produces a Thoughtworks-branded HTML report proving every sent message was processed exactly once.
 
 Report sections:
-- Summary cards — total sent, pass, fail, not-processed, duplicates
+- Summary cards — total sent, pass, fail, not-processed, duplicates, **tampered**
 - **DuckDB: Schema Breakdown** — per-message-set pass rate with visual bar charts
 - **DuckDB: Validation Error Patterns** — most common XSD error categories ranked by frequency
 - **DuckDB: Test Category vs Actual Outcome** — gen-pass / gen-fail / gen-edge vs actual validation result
+- **DuckDB: Tampered Messages by Schema** — tampered count per message set (shown when non-zero)
 - Message Processing Detail — per-file status table with collapsible error detail
 - Duplicate Detection Log
+- **Tampered Message Log** — files that failed signature verification
 
 ```bash
 uv run reconciliation_report.py
@@ -107,7 +126,8 @@ Dependencies: `duckdb>=1.0,<2.0` (declared via PEP 723 inline metadata).
 | Topic | Purpose |
 |---|---|
 | `iso20022.pain.001` … `iso20022.pain.018` | One topic per message set |
-| `iso20022.dlq` | Dead-letter queue — failed validation messages |
+| `iso20022.dlq` | Dead-letter queue — failed XSD validation messages |
+| `iso20022.tampered` | Messages that failed Ed25519 signature verification |
 
 Consumer group: `iso20022-receivers`. Broker: `localhost:9092`.
 
@@ -124,27 +144,30 @@ The broker uses two listeners to support both host-machine scripts and the Kafka
 
 ## State Database (state.db)
 
-SQLite, WAL mode, three tables:
+SQLite, WAL mode, four tables:
 
 | Table | Contents |
 |---|---|
 | `sent_messages` | Every message published by the sender |
 | `processed_messages` | One row per unique message — status: `pass` or `fail` |
 | `duplicate_events` | Every re-delivery / re-send caught by the receiver |
+| `tampered_messages` | Every message that failed Ed25519 signature verification |
 
 Inspect:
 ```bash
 sqlite3 state.db
 sqlite3 state.db "SELECT validation_status, COUNT(*) FROM processed_messages GROUP BY validation_status;"
+sqlite3 state.db "SELECT file_name, message_set, detected_at FROM tampered_messages;"
 ```
 
 ## Running the Full Pipeline
 
 ```bash
+uv run generate_keys.py               # first time only — generates Ed25519 key pair
 docker-compose up -d                  # start Kafka + Kafka UI (wait ~30s)
 # open http://localhost:8080          # Kafka UI dashboard
-uv run sender_agent.py                # publish all test messages
-uv run receiver_agent.py              # consume, validate, deduplicate (Ctrl+C when done)
+uv run sender_agent.py                # sign and publish all test messages
+uv run receiver_agent.py              # verify signatures, validate XSD, deduplicate (Ctrl+C when done)
 uv run reconciliation_report.py       # HTML reconciliation report (includes DuckDB analytics)
 docker-compose down                   # stop Kafka + Kafka UI
 ```
@@ -229,3 +252,10 @@ All scripts use PEP 723 inline dependency metadata (`# /// script ... # ///`) so
 
 - **LLM06** — domain argument validated against `^[a-z]{4}(\.\d{3}){0,3}$` before any file I/O; rejects path traversal and injection
 - **LLM10** — lxml parser hardened (`resolve_entities=False`, `no_network=True`, `huge_tree=False`); file count and size caps enforced in all scripts
+
+### Message Integrity (Ed25519)
+
+- Sender signs `xml_bytes` with `Ed25519PrivateKey.sign(data)` → base64-encodes → adds `"signature"` field to Kafka JSON payload
+- Receiver calls `Ed25519PublicKey.verify(base64.b64decode(sig), xml_content.encode())` — raises `InvalidSignature` on tamper
+- Keys live in `keys/` (gitignored). Run `uv run generate_keys.py` once before the first pipeline run.
+- Library: `cryptography>=42.0,<46.0` (PyCA) — declared via PEP 723 in both `sender_agent.py` and `receiver_agent.py`

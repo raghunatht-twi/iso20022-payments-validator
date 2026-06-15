@@ -328,6 +328,7 @@
     <li><a href="#components">Components</a></li>
     <li><a href="#data-flows">Data Flows</a></li>
     <li><a href="#exactly-once">Exactly-Once</a></li>
+    <li><a href="#integrity">Message Integrity</a></li>
     <li><a href="#security">Security</a></li>
     <li><a href="#deployment">Deployment</a></li>
     <li><a href="#decisions">Design Decisions</a></li>
@@ -348,8 +349,8 @@
     </p>
     <p>
       The platform combines an AI agent (powered by Claude), a multi-threaded Kafka pipeline, an XSD
-      validation engine (lxml), and a SQLite state store to eliminate the manual effort of creating,
-      processing, and proving completeness of ISO 20022 test suites.
+      validation engine (lxml), Ed25519 digital signature integrity checking, and a SQLite state store
+      to eliminate the manual effort of creating, processing, and proving completeness of ISO 20022 test suites.
     </p>
 
     <div class="diagram">
@@ -360,22 +361,23 @@
   │  ┌──────────────────┐    ┌────────────────────┐    ┌─────────────┐  │
   │  │  <span class="hl">LAYER 1</span>           │    │  <span class="hl">LAYER 2</span>            │    │  <span class="hl">LAYER 3</span>     │  │
   │  │  Test Data Gen   │    │  Kafka Pipeline    │    │  Reporting  │  │
-  │  │                  │    │                    │    │             │  │
+  │  │                  │    │  + Integrity       │    │             │  │
   │  │  Claude API      │    │  sender_agent      │    │  validator  │  │
-  │  │       ↕          │───▶│       ↓            │───▶│  recon      │  │
+  │  │       ↕          │───▶│  (signs msgs) ↓   │───▶│  recon      │  │
   │  │  generate_test   │    │    Kafka topics    │    │  report     │  │
   │  │  _data.py        │    │       ↓            │    │             │  │
   │  │                  │    │  receiver_agent    │    │             │  │
-  │  └──────────────────┘    └────────────────────┘    └─────────────┘  │
-  │         XSD files              SQLite                 HTML reports   │
-  │         XML fixtures           state.db               reports/       │
+  │  └──────────────────┘    │  (verifies sigs)   │    └─────────────┘  │
+  │         XSD files        └────────────────────┘    HTML reports      │
+  │         XML fixtures           SQLite               reports/          │
+  │         keys/ (Ed25519)        state.db                              │
   └─────────────────────────────────────────────────────────────────────┘
       </pre>
     </div>
 
     <div class="callout teal">
       <strong>Single external dependency:</strong> The Anthropic API (Claude) is the only external
-      service called at runtime. Everything else — Kafka, SQLite, validation — runs locally.
+      service called at runtime. Everything else — Kafka, SQLite, Ed25519 signing, validation — runs locally.
     </div>
   </section>
 
@@ -440,25 +442,33 @@
       <div class="layer-header">
         <div class="layer-num">2</div>
         <div>
-          <div class="layer-title">Kafka Pipeline</div>
-          <div class="layer-subtitle">sender_agent.py → Kafka → receiver_agent.py — event-driven validation with exactly-once semantics</div>
+          <div class="layer-title">Kafka Pipeline + Message Integrity</div>
+          <div class="layer-subtitle">sender_agent.py → Kafka → receiver_agent.py — signed messages, tamper detection, exactly-once semantics</div>
         </div>
       </div>
       <div class="layer-body">
         <p>
           The pipeline streams every XML test message through Kafka, validates it against its schema,
-          and routes failures to a dead-letter queue. A multi-threaded receiver — one thread per
-          domain/message-set — processes all schemas in parallel. The combination of Kafka's
-          at-least-once delivery and SQLite's idempotent writes produces exactly-once processing
-          semantics without requiring Kafka transactions.
+          and routes failures to a dead-letter queue. Every message is <strong>Ed25519-signed</strong>
+          by the sender; the receiver verifies the signature before any XSD validation. Messages that
+          fail signature verification are quarantined to a dedicated tampered topic. A multi-threaded
+          receiver — one thread per domain/message-set — processes all schemas in parallel. The
+          combination of Kafka's at-least-once delivery and SQLite's idempotent writes produces
+          exactly-once processing semantics without requiring Kafka transactions.
         </p>
         <div class="diagram">
           <pre>
+  <span class="hl">generate_keys.py</span>  (run once)
+    Generate: Ed25519 key pair
+    Save:     keys/sender_private.pem  (chmod 0o600)
+              keys/sender_public.pem
+
   <span class="hl">sender_agent.py</span>
     Discover: test_data/**/*.xml
     Compute:  message_id = sha256(domain + msg_set + xml_bytes)
     Skip if:  message_id already in sent_messages (idempotent re-runs)
-    Publish:  xml_content + metadata → iso20022.{domain}.{msg_set}
+    Sign:     signature = base64(Ed25519PrivateKey.sign(xml_bytes))
+    Publish:  xml_content + metadata + signature → iso20022.{domain}.{msg_set}
     Record:   INSERT INTO sent_messages
         │
         ▼
@@ -470,7 +480,8 @@
     │  iso20022.pain.011  iso20022.pain.012  │
     │  iso20022.pain.013  iso20022.pain.014  │
     │  iso20022.pain.017  iso20022.pain.018  │
-    │  <span class="coral">iso20022.dlq</span>                          │   (dead-letter queue)
+    │  <span class="coral">iso20022.dlq</span>                          │   (XSD validation failures)
+    │  <span class="amber">iso20022.tampered</span>                    │   (signature failures)
     └────────────────────────────────────────┘
         │
         ▼
@@ -478,6 +489,12 @@
     Poll Kafka (manual offset commit)
       │
       ├─ Already processed? ──YES──▶ record duplicate_event, commit offset
+      │
+      ├─ Verify Ed25519 signature
+      │     │
+      │     └─ INVALID ──▶ forward to <span class="amber">iso20022.tampered</span>
+      │                     INSERT tampered_messages
+      │                     commit Kafka offset   (skip XSD validation)
       │
       ├─ Validate XML with lxml
       │     │
@@ -542,20 +559,25 @@
         <div class="component-role">Validation Engine + Reporter</div>
         <p>Validates any set of XML files against a specified XSD schema. Produces a Thoughtworks-branded HTML report with per-file PASS/FAIL, precise error locations, and suggested fixes. Hash-checks known schemas before loading.</p>
       </div>
+      <div class="component">
+        <div class="component-name">generate_keys.py</div>
+        <div class="component-role">Key Generation</div>
+        <p>Run once before the first pipeline execution. Generates an Ed25519 key pair: <code>keys/sender_private.pem</code> (chmod 0o600 — owner only) and <code>keys/sender_public.pem</code>. Refuses to overwrite an existing private key to prevent accidental rotation. Both files are gitignored.</p>
+      </div>
       <div class="component amber">
         <div class="component-name">sender_agent.py</div>
-        <div class="component-role">Kafka Producer</div>
-        <p>Discovers all XML test files, computes content-addressed SHA-256 message IDs, publishes to per-schema Kafka topics. Idempotent — skips files already recorded in <code>sent_messages</code>. Creates topics if they do not exist.</p>
+        <div class="component-role">Kafka Producer + Signer</div>
+        <p>Discovers all XML test files, computes content-addressed SHA-256 message IDs, signs each message with the Ed25519 private key, and publishes to per-schema Kafka topics. Idempotent — skips files already recorded in <code>sent_messages</code>. Creates topics (including <code>iso20022.tampered</code>) if they do not exist.</p>
       </div>
       <div class="component coral">
         <div class="component-name">receiver_agent.py</div>
-        <div class="component-role">Kafka Consumer + Validator</div>
-        <p>Spawns one daemon thread per schema. Each thread polls its topic, checks for duplicates, validates XML with lxml, records results in SQLite, and forwards failures to the DLQ. Manual offset commit guarantees exactly-once.</p>
+        <div class="component-role">Kafka Consumer + Verifier + Validator</div>
+        <p>Spawns one daemon thread per schema. Each thread polls its topic, checks for duplicates, <strong>verifies the Ed25519 signature</strong> (routes tampered messages to <code>iso20022.tampered</code>), validates XML with lxml, records results in SQLite, and forwards XSD failures to the DLQ. Manual offset commit guarantees exactly-once.</p>
       </div>
       <div class="component plum">
         <div class="component-name">reconciliation_report.py</div>
         <div class="component-role">Audit Reporter + Analytics</div>
-        <p>Reads <code>state.db</code> via SQLite for per-message status, then runs three DuckDB analytical queries (schema breakdown, error patterns, test category vs outcome) against the same file via DuckDB's native SQLite attachment. Produces a single timestamped HTML report combining reconciliation proof and analytics.</p>
+        <p>Reads <code>state.db</code> via SQLite for per-message status, then runs DuckDB analytical queries (schema breakdown, error patterns, test category vs outcome, tampered by schema) against the same file via DuckDB's native SQLite attachment. Produces a single timestamped HTML report combining reconciliation proof, tampered message log, and analytics.</p>
       </div>
       <div class="component">
         <div class="component-name">docker-compose.yml</div>
@@ -598,20 +620,24 @@
       </div>
       <div class="flow-step">
         <div class="flow-line"><div class="flow-dot">6</div><div class="flow-connector"></div></div>
-        <div class="flow-content"><strong>Kafka publish</strong> — <code>sender_agent.py</code> reads each XML file, computes its SHA-256 message ID, and publishes it to the appropriate Kafka topic. The send is recorded in <code>sent_messages</code>.</div>
+        <div class="flow-content"><strong>Kafka publish</strong> — <code>sender_agent.py</code> reads each XML file, computes its SHA-256 message ID, <strong>signs the XML bytes with the Ed25519 private key</strong>, and publishes the payload (including the base64 signature) to the appropriate Kafka topic. The send is recorded in <code>sent_messages</code>.</div>
       </div>
       <div class="flow-step">
         <div class="flow-line"><div class="flow-dot">7</div><div class="flow-connector"></div></div>
-        <div class="flow-content"><strong>Kafka consume</strong> — each receiver thread polls its topic, checks whether the message ID was already processed, validates the XML content, and writes the outcome to <code>processed_messages</code>. Failures are forwarded to <code>iso20022.dlq</code>.</div>
+        <div class="flow-content"><strong>Signature verification</strong> — each receiver thread extracts the <code>signature</code> field and calls <code>Ed25519PublicKey.verify()</code>. A missing or invalid signature routes the message to <code>iso20022.tampered</code> and records it in <code>tampered_messages</code>. XSD validation is skipped for tampered messages.</div>
       </div>
       <div class="flow-step">
         <div class="flow-line"><div class="flow-dot">8</div><div class="flow-connector"></div></div>
-        <div class="flow-content"><strong>Reconciliation</strong> — <code>reconciliation_report.py</code> reads all three SQLite tables and produces an HTML audit report. A "Fully reconciled" verdict is issued when every row in <code>sent_messages</code> has a corresponding row in <code>processed_messages</code>.</div>
+        <div class="flow-content"><strong>XSD validation</strong> — if the signature is valid, the receiver validates the XML content against the XSD. Results are written to <code>processed_messages</code>; failures are forwarded to <code>iso20022.dlq</code>.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">9</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Reconciliation</strong> — <code>reconciliation_report.py</code> reads all four SQLite tables and produces an HTML audit report with DuckDB analytics. A "Fully reconciled" verdict is issued when every row in <code>sent_messages</code> has a corresponding row in <code>processed_messages</code>.</div>
       </div>
     </div>
 
     <h3>State database schema</h3>
-    <p>SQLite in WAL mode — three tables, written by separate scripts, read by the reconciliation report.</p>
+    <p>SQLite in WAL mode — four tables, written by separate scripts, read by the reconciliation report.</p>
     <table>
       <thead>
         <tr><th>Table</th><th>Written by</th><th>Key columns</th><th>Purpose</th></tr>
@@ -635,6 +661,12 @@
           <td><code>id PK AUTOINCREMENT</code>, <code>message_id</code>, <code>detected_at</code></td>
           <td>Audit log of every re-delivery caught by the receiver</td>
         </tr>
+        <tr>
+          <td><code>tampered_messages</code></td>
+          <td><code>receiver_agent.py</code></td>
+          <td><code>id PK AUTOINCREMENT</code>, <code>message_id</code>, <code>file_name</code>, <code>detected_at</code>, <code>tampered_topic</code></td>
+          <td>Audit log of every message that failed Ed25519 signature verification</td>
+        </tr>
       </tbody>
     </table>
 
@@ -649,7 +681,8 @@
         <tr><td><code>iso20022.pain.007</code></td><td><code>receiver thread pain.007</code></td><td>Customer Payment Reversal</td></tr>
         <tr><td><code>iso20022.pain.008</code></td><td><code>receiver thread pain.008</code></td><td>Customer Direct Debit Initiation</td></tr>
         <tr><td><code>iso20022.pain.009–018</code></td><td><code>receiver threads pain.009–018</code></td><td>Mandate management messages</td></tr>
-        <tr><td><code>iso20022.dlq</code></td><td><code>receiver_agent</code> (all threads)</td><td>Dead-letter queue — validation failures</td></tr>
+        <tr><td><code>iso20022.dlq</code></td><td><code>receiver_agent</code> (all threads)</td><td>Dead-letter queue — XSD validation failures</td></tr>
+        <tr><td><code>iso20022.tampered</code></td><td><code>receiver_agent</code> (all threads)</td><td>Quarantine — messages that failed Ed25519 signature verification</td></tr>
       </tbody>
     </table>
   </section>
@@ -705,6 +738,69 @@
     </table>
   </section>
 
+  <!-- ── Message Integrity ── -->
+  <section id="integrity">
+    <h2>Message Integrity — Ed25519 Digital Signatures</h2>
+    <p>
+      Every message traversing the Kafka pipeline is cryptographically signed by the sender and
+      verified by the receiver. This ensures that any tampering of message content in transit is
+      detected before XSD validation runs.
+    </p>
+
+    <div class="diagram">
+      <pre>
+  INTEGRITY FLOW
+
+  <span class="hl">Key Generation</span>  (uv run generate_keys.py — once)
+    Ed25519PrivateKey.generate()
+      ├─ keys/sender_private.pem   ← sender only, chmod 0o600, gitignored
+      └─ keys/sender_public.pem    ← distributed to receiver
+
+  <span class="hl">Sender</span>  (for every XML file)
+    xml_bytes = xml_path.read_bytes()
+    signature = base64.b64encode( private_key.sign(xml_bytes) ).decode()
+    payload["signature"] = signature
+    producer.send(topic, value=payload)
+
+  <span class="hl">Receiver</span>  (first check on every message)
+    sig_bytes = base64.b64decode( payload["signature"] )
+    public_key.verify( sig_bytes, xml_content.encode("utf-8") )
+      │
+      ├─ raises InvalidSignature → TAMPERED
+      │     forward to <span class="amber">iso20022.tampered</span>
+      │     INSERT tampered_messages
+      │     commit offset
+      │     (skip XSD validation entirely)
+      │
+      └─ success → VERIFIED
+            proceed to XSD validation
+      </pre>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Algorithm</td><td>Ed25519 (Edwards-curve Digital Signature Algorithm)</td></tr>
+        <tr><td>Library</td><td>PyCA <code>cryptography &gt;=42.0,&lt;46.0</code></td></tr>
+        <tr><td>Signed payload</td><td>Raw XML bytes (<code>xml_path.read_bytes()</code>) — not the JSON envelope</td></tr>
+        <tr><td>Signature encoding</td><td>Base64 (URL-safe string in Kafka JSON payload)</td></tr>
+        <tr><td>Key storage</td><td><code>keys/</code> directory — gitignored; private key chmod 0o600</td></tr>
+        <tr><td>Key format</td><td>PEM-encoded PKCS#8 (private) / SubjectPublicKeyInfo (public)</td></tr>
+        <tr><td>Tamper destination</td><td><code>iso20022.tampered</code> Kafka topic + <code>tampered_messages</code> SQLite table</td></tr>
+        <tr><td>Tamper reason</td><td>Forwarded in payload as <code>"tamper_reason": "signature mismatch"</code> or <code>"missing signature"</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout teal">
+      <strong>Why Ed25519?</strong> Ed25519 uses 32-byte keys and 64-byte signatures, is immune to
+      timing side-channels, provides 128-bit security, and is considerably faster than RSA-2048 or
+      ECDSA-P256 for both signing and verification — making it the right choice for high-throughput
+      message pipelines.
+    </div>
+  </section>
+
   <!-- ── Security ── -->
   <section id="security">
     <h2>Security Architecture</h2>
@@ -756,6 +852,8 @@
         <tr><td><code>html.escape()</code> on all LLM-sourced strings</td><td>All three HTML reporters</td><td>XSS in generated reports</td></tr>
         <tr><td>Parameterised SQL (<code>?</code> placeholders)</td><td>All SQLite writes</td><td>SQL injection</td></tr>
         <tr><td>SHA-256 schema integrity check</td><td><code>ISO20022_validator.py</code></td><td>Schema tampering / data poisoning</td></tr>
+        <tr><td>Ed25519 message signatures</td><td><code>sender_agent.py</code> / <code>receiver_agent.py</code></td><td>In-transit message tampering; unsigned messages quarantined to <code>iso20022.tampered</code></td></tr>
+        <tr><td>Private key gitignored, chmod 0o600</td><td><code>generate_keys.py</code> / <code>.gitignore</code></td><td>Credential exposure via version control or file system</td></tr>
         <tr><td>Symlink escape check (<code>resolve().is_relative_to()</code>)</td><td><code>find_test_files()</code></td><td>Symlink traversal to outside test_data/</td></tr>
         <tr><td>Relative paths in HTML reports</td><td>All reporters</td><td>Host directory disclosure</td></tr>
         <tr><td>API key via environment variable only</td><td><code>anthropic.Anthropic()</code></td><td>Credential exposure in code/logs</td></tr>
@@ -801,6 +899,7 @@
   │  Filesystem                                             │   │
   │    schema/pain/*/          XSD schemas (git tracked)   │   │
   │    test_data/pain/*/       XML fixtures (git tracked)  │   │
+  │    keys/                   Ed25519 key pair (gitignored) │ │
   │    state.db                SQLite WAL  (gitignored)    │   │
   │    reports/                HTML reports (gitignored)   │   │
   └─────────────────────────────────────────────────────────┘
@@ -813,7 +912,8 @@
         <tr><th>Step</th><th>Command</th><th>What it does</th></tr>
       </thead>
       <tbody>
-        <tr><td>0 (once)</td><td><code>export ANTHROPIC_API_KEY="sk-ant-..."</code></td><td>Set API key in shell environment</td></tr>
+        <tr><td>0a (once)</td><td><code>export ANTHROPIC_API_KEY="sk-ant-..."</code></td><td>Set API key in shell environment</td></tr>
+        <tr><td>0b (once)</td><td><code>uv run generate_keys.py</code></td><td>Generate Ed25519 key pair to <code>keys/</code></td></tr>
         <tr><td>1</td><td><code>docker-compose up -d</code></td><td>Start Kafka broker + Kafka UI — wait ~30s for healthcheck</td></tr>
         <tr><td>1a (optional)</td><td>open <code>http://localhost:8080</code></td><td>Open Kafka UI dashboard in browser</td></tr>
         <tr><td>2 (optional)</td><td><code>uv run generate_test_data.py pain</code></td><td>Generate XML test corpus for all pain schemas</td></tr>
@@ -833,6 +933,7 @@
         <tr><td><code>anthropic</code></td><td>&gt;=0.40, &lt;1.0</td><td>Claude API client</td><td>PEP 723 inline metadata / uv</td></tr>
         <tr><td><code>lxml</code></td><td>&gt;=5.0, &lt;6.0</td><td>XSD validation + safe XML parsing</td><td>PEP 723 inline metadata / uv</td></tr>
         <tr><td><code>kafka-python</code></td><td>&gt;=2.0, &lt;3.0</td><td>Kafka producer + consumer</td><td>PEP 723 inline metadata / uv</td></tr>
+        <tr><td><code>cryptography</code></td><td>&gt;=42.0, &lt;46.0</td><td>Ed25519 key generation, signing, verification (PyCA)</td><td>PEP 723 inline metadata / uv</td></tr>
         <tr><td><code>duckdb</code></td><td>&gt;=1.0, &lt;2.0</td><td>Analytics queries on state.db</td><td>PEP 723 inline metadata / uv</td></tr>
         <tr><td><code>confluentinc/cp-kafka:7.6.0</code></td><td>7.6.0</td><td>Kafka broker (KRaft, dual listeners)</td><td>Docker</td></tr>
         <tr><td><code>provectuslabs/kafka-ui:latest</code></td><td>latest</td><td>Kafka monitoring dashboard</td><td>Docker</td></tr>
@@ -890,6 +991,16 @@
           <td>requirements.txt; pyproject.toml; Pipfile</td>
           <td>Each script is self-contained — no shared virtual environment setup. <code>uv run script.py</code> installs exactly what that script needs and nothing more.</td>
         </tr>
+        <tr>
+          <td>Ed25519 for message signing (not HMAC, not RSA)</td>
+          <td>HMAC-SHA256 shared secret; RSA-2048; ECDSA-P256</td>
+          <td>Ed25519 uses asymmetric keys so the receiver needs no secret — the public key is safe to distribute. 32-byte keys, 64-byte signatures, immune to timing side-channels, and significantly faster than RSA or ECDSA at equivalent security levels.</td>
+        </tr>
+        <tr>
+          <td>Sign raw XML bytes, not the JSON envelope</td>
+          <td>Sign the full serialised JSON payload</td>
+          <td>XML bytes are stable — the same file always produces the same bytes. The JSON envelope could be legitimately re-serialised with different field ordering, which would break signature verification. Signing the canonical input (XML) avoids this class of false positives.</td>
+        </tr>
       </tbody>
     </table>
   </section>
@@ -927,7 +1038,12 @@
       <div class="component">
         <div class="component-name">SQLite (WAL mode)</div>
         <div class="component-role">State Store</div>
-        <p>Three tables: <code>sent_messages</code>, <code>processed_messages</code>, <code>duplicate_events</code>. WAL mode enables concurrent writes from 12 receiver threads. Parameterised queries throughout.</p>
+        <p>Four tables: <code>sent_messages</code>, <code>processed_messages</code>, <code>duplicate_events</code>, <code>tampered_messages</code>. WAL mode enables concurrent writes from 12 receiver threads. Parameterised queries throughout.</p>
+      </div>
+      <div class="component plum">
+        <div class="component-name">PyCA cryptography 42+</div>
+        <div class="component-role">Message Integrity</div>
+        <p>Ed25519 key generation (<code>Ed25519PrivateKey.generate()</code>), signing (<code>private_key.sign(data)</code>), and verification (<code>public_key.verify(sig, data)</code> raises <code>InvalidSignature</code> on tamper). Keys serialised as PEM-encoded PKCS#8 / SubjectPublicKeyInfo. Installed automatically via PEP 723 in <code>generate_keys.py</code>, <code>sender_agent.py</code>, and <code>receiver_agent.py</code>.</p>
       </div>
       <div class="component amber">
         <div class="component-name">DuckDB 1.x</div>

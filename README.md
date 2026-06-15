@@ -38,8 +38,12 @@ docs/
     executive-report.html           Business value and executive summary
     owasp-llm-security-report.html  OWASP LLM Top 10 security assessment
 
+keys/
+    sender_private.pem  Ed25519 private key — signs every Kafka message (gitignored)
+    sender_public.pem   Ed25519 public key  — used by receiver to verify signatures
+
 reports/        generated HTML reports (gitignored)
-state.db        SQLite pipeline state — sent, processed, duplicates (gitignored)
+state.db        SQLite pipeline state — sent, processed, duplicates, tampered (gitignored)
 docker-compose.yml  Confluent Kafka 7.6 + Kafka UI (ports 9092 and 8080)
 ```
 
@@ -128,12 +132,31 @@ Each generated XML is validated by lxml. If a "pass" case fails validation it is
 
 ## 3 — Kafka Pipeline (Multi-Agent)
 
-An event-driven pipeline that streams test messages through Kafka, validates them, and proves exactly-once processing via a reconciliation report.
+An event-driven pipeline that streams test messages through Kafka, validates them, and proves exactly-once processing via a reconciliation report. Every message is **Ed25519-signed** by the sender and verified by the receiver before XSD validation.
 
 ```
-sender_agent.py   →   Kafka topics   →   receiver_agent.py   →   reconciliation_report.py
-                            ↓ (fail)
+generate_keys.py  →  keys/sender_private.pem
+                          keys/sender_public.pem
+
+sender_agent.py   →   Kafka topics (signed)   →   receiver_agent.py   →   reconciliation_report.py
+                                                         ↓ (tampered)
+                                                   iso20022.tampered
+                            ↓ (fail XSD)
                        iso20022.dlq
+```
+
+### Message integrity — Ed25519 digital signatures
+
+Each message sent by `sender_agent.py` carries a base64-encoded Ed25519 signature over the raw XML bytes. The receiver verifies the signature as its **first** check:
+
+- **Signature missing or invalid** → message is forwarded to `iso20022.tampered` and recorded in `tampered_messages`. XSD validation is skipped.
+- **Signature valid** → proceeds to XSD validation as normal.
+
+```bash
+# Generate key pair once before first run
+uv run generate_keys.py
+# keys/sender_private.pem  (gitignored — never commit)
+# keys/sender_public.pem   (safe to distribute to receivers)
 ```
 
 ### Kafka topics
@@ -142,6 +165,7 @@ sender_agent.py   →   Kafka topics   →   receiver_agent.py   →   reconcili
 |---|---|
 | `iso20022.pain.001` … `iso20022.pain.018` | One topic per message set |
 | `iso20022.dlq` | Dead-letter queue — messages that failed XSD validation |
+| `iso20022.tampered` | Messages whose Ed25519 signature failed verification |
 
 ### Start Kafka
 
@@ -172,10 +196,13 @@ Opens automatically once Kafka's healthcheck passes (~30s after `docker-compose 
 ### Run the pipeline
 
 ```bash
-# Step 1 — send all test messages to Kafka (idempotent: re-runs skip already-sent files)
+# Step 0 (once) — generate Ed25519 key pair
+uv run generate_keys.py
+
+# Step 1 — send all test messages to Kafka (signed + idempotent)
 uv run sender_agent.py
 
-# Step 2 — start receivers (one thread per domain/message-set, auto-discovered from schema/)
+# Step 2 — start receivers (verify signatures, then validate XSD)
 uv run receiver_agent.py
 # Press Ctrl+C when all messages are consumed
 
@@ -194,6 +221,7 @@ Each receiver thread prefixes every log line with its domain/message-set:
 [pain.001] PASS       gen-pass-001.xml
 [pain.001] FAIL       gen-fail-003.xml  — Line 12: element 'Ccy' missing
 [pain.001] DUPLICATE  gen-pass-001.xml
+[pain.001] TAMPERED   gen-pass-007.xml  — signature verification failed
 ```
 
 ### Exactly-once semantics
@@ -209,20 +237,22 @@ Each receiver thread prefixes every log line with its domain/message-set:
 
 `reports/reconciliation_<timestamp>.html` shows:
 
-- **Pass** — validated and processed successfully
-- **Fail → DLQ** — failed XSD validation, forwarded to `iso20022.dlq`
+- **Pass** — signature verified + XSD valid
+- **Fail → DLQ** — signature valid but failed XSD validation, forwarded to `iso20022.dlq`
+- **Tampered** — Ed25519 signature missing or invalid, forwarded to `iso20022.tampered`
 - **Not Processed** — sent but not yet consumed (receiver still catching up)
 - **Duplicates Caught** — re-sent messages detected and skipped
 
 A green "Fully reconciled" verdict appears when every sent message has been processed exactly once.
 
-The report also includes three **DuckDB analytics sections** (powered by DuckDB querying `state.db` directly):
+The report also includes **DuckDB analytics sections** (powered by DuckDB querying `state.db` directly):
 
 | Analytics Section | What it shows |
 |---|---|
 | Schema Breakdown | Per-message-set pass rate with visual bar chart |
 | Validation Error Patterns | Most common XSD error categories ranked by frequency |
 | Test Category vs Actual Outcome | How gen-pass / gen-fail / gen-edge files actually performed |
+| Tampered Messages by Schema | Count of tampered messages per message set (shown when non-zero) |
 
 ### Inspect the state database
 
@@ -241,6 +271,9 @@ WHERE message_id NOT IN (SELECT message_id FROM processed_messages);
 
 -- Duplicates
 SELECT file_name, detected_at FROM duplicate_events;
+
+-- Tampered messages
+SELECT file_name, message_set, detected_at FROM tampered_messages;
 ```
 
 ### Inspect the dead-letter queue
@@ -285,8 +318,13 @@ Document
 
 ## Security
 
-All scripts apply OWASP LLM Top 10 mitigations:
+**Message integrity** — Ed25519 digital signatures (PyCA `cryptography` library):
+- Private key (`keys/sender_private.pem`) signs every XML payload before it enters Kafka
+- Public key (`keys/sender_public.pem`) is loaded by the receiver at startup
+- Messages with a missing or invalid signature are quarantined to `iso20022.tampered` — they never reach the XSD validator
+- `keys/` is gitignored so the private key is never committed
 
+**OWASP LLM Top 10 mitigations:**
 - **LLM06** — domain argument validated against `^[a-z]{4}(\.\d{3}){0,3}$` before any file I/O
 - **LLM10** — lxml parser hardened (`resolve_entities=False`, `no_network=True`, `huge_tree=False`); file count and size caps enforced
 
