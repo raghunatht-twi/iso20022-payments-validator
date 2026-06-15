@@ -23,9 +23,14 @@ test_data/
     └── <message-set>/      e.g. 001/
         └── *.xml           hand-crafted and generated (gen-pass-NNN, gen-fail-NNN, gen-edge-NNN)
 
+docs/
+└── architecture.html               System architecture document
+└── executive-report.html           Business value and executive summary
+└── owasp-llm-security-report.html  OWASP LLM Top 10 security assessment
+
 reports/                    generated HTML reports (gitignored)
 state.db                    SQLite pipeline state — sent, processed, duplicates (gitignored)
-docker-compose.yml          Confluent Kafka 7.6 in KRaft mode (single broker, port 9092)
+docker-compose.yml          Confluent Kafka 7.6 + Kafka UI (ports 9092 and 8080, KRaft mode)
 ```
 
 Schemas and test fixtures are co-organised by the same `domain/message-set` hierarchy as the ISO 20022 naming convention.
@@ -81,11 +86,21 @@ uv run receiver_agent.py    # Ctrl+C to stop
 
 ### reconciliation_report.py
 
-Reads `state.db` and produces a Thoughtworks-branded HTML report proving every sent message was processed exactly once. Shows pass / fail / not-processed / duplicates-caught.
+Reads `state.db` via SQLite and runs analytical queries via DuckDB (which attaches to `state.db` natively). Produces a Thoughtworks-branded HTML report proving every sent message was processed exactly once.
+
+Report sections:
+- Summary cards — total sent, pass, fail, not-processed, duplicates
+- **DuckDB: Schema Breakdown** — per-message-set pass rate with visual bar charts
+- **DuckDB: Validation Error Patterns** — most common XSD error categories ranked by frequency
+- **DuckDB: Test Category vs Actual Outcome** — gen-pass / gen-fail / gen-edge vs actual validation result
+- Message Processing Detail — per-file status table with collapsible error detail
+- Duplicate Detection Log
 
 ```bash
 uv run reconciliation_report.py
 ```
+
+Dependencies: `duckdb>=1.0,<2.0` (declared via PEP 723 inline metadata).
 
 ## Kafka Topics
 
@@ -95,6 +110,17 @@ uv run reconciliation_report.py
 | `iso20022.dlq` | Dead-letter queue — failed validation messages |
 
 Consumer group: `iso20022-receivers`. Broker: `localhost:9092`.
+
+## Kafka UI
+
+Provectus Kafka UI runs alongside Kafka in Docker. Open `http://localhost:8080` after `docker-compose up -d`.
+
+The broker uses two listeners to support both host-machine scripts and the Kafka UI container:
+
+| Listener | Address | Used by |
+|---|---|---|
+| `PLAINTEXT_HOST` | `localhost:9092` | Python scripts on the host |
+| `PLAINTEXT_INTERNAL` | `kafka:29092` | Kafka UI container (Docker internal DNS) |
 
 ## State Database (state.db)
 
@@ -115,11 +141,12 @@ sqlite3 state.db "SELECT validation_status, COUNT(*) FROM processed_messages GRO
 ## Running the Full Pipeline
 
 ```bash
-docker-compose up -d                  # start Kafka (wait ~30s)
+docker-compose up -d                  # start Kafka + Kafka UI (wait ~30s)
+# open http://localhost:8080          # Kafka UI dashboard
 uv run sender_agent.py                # publish all test messages
 uv run receiver_agent.py              # consume, validate, deduplicate (Ctrl+C when done)
-uv run reconciliation_report.py       # HTML reconciliation report
-docker-compose down                   # stop Kafka
+uv run reconciliation_report.py       # HTML reconciliation report (includes DuckDB analytics)
+docker-compose down                   # stop Kafka + Kafka UI
 ```
 
 ## Message Hierarchy (pain.001)

@@ -554,13 +554,18 @@
       </div>
       <div class="component plum">
         <div class="component-name">reconciliation_report.py</div>
-        <div class="component-role">Audit Reporter</div>
-        <p>Reads <code>state.db</code> and joins the three tables to determine per-message status. Produces a timestamped HTML report with a green "Fully reconciled" verdict when all sent messages are accounted for.</p>
+        <div class="component-role">Audit Reporter + Analytics</div>
+        <p>Reads <code>state.db</code> via SQLite for per-message status, then runs three DuckDB analytical queries (schema breakdown, error patterns, test category vs outcome) against the same file via DuckDB's native SQLite attachment. Produces a single timestamped HTML report combining reconciliation proof and analytics.</p>
       </div>
       <div class="component">
         <div class="component-name">docker-compose.yml</div>
         <div class="component-role">Infrastructure</div>
-        <p>Defines a single-broker Confluent Kafka 7.6 instance in KRaft mode (no Zookeeper). Exposes port 9092. Includes a healthcheck that waits for the broker to be ready before the pipeline scripts connect.</p>
+        <p>Defines a single-broker Confluent Kafka 7.6 instance in KRaft mode (no Zookeeper). Exposes two listeners: <code>localhost:9092</code> for host-machine scripts and <code>kafka:29092</code> for Docker-internal services. Includes a healthcheck before dependent services start.</p>
+      </div>
+      <div class="component teal">
+        <div class="component-name">Kafka UI (provectuslabs)</div>
+        <div class="component-role">Monitoring Dashboard</div>
+        <p>Visual web dashboard at <code>http://localhost:8080</code>. Shows all topics with message counts, lets you browse individual messages (including DLQ payloads), monitors consumer group lag per partition, and displays real-time throughput graphs. Starts automatically after Kafka's healthcheck passes.</p>
       </div>
     </div>
   </section>
@@ -809,12 +814,13 @@
       </thead>
       <tbody>
         <tr><td>0 (once)</td><td><code>export ANTHROPIC_API_KEY="sk-ant-..."</code></td><td>Set API key in shell environment</td></tr>
-        <tr><td>1</td><td><code>docker-compose up -d</code></td><td>Start Kafka broker — wait ~30s for healthcheck</td></tr>
+        <tr><td>1</td><td><code>docker-compose up -d</code></td><td>Start Kafka broker + Kafka UI — wait ~30s for healthcheck</td></tr>
+        <tr><td>1a (optional)</td><td>open <code>http://localhost:8080</code></td><td>Open Kafka UI dashboard in browser</td></tr>
         <tr><td>2 (optional)</td><td><code>uv run generate_test_data.py pain</code></td><td>Generate XML test corpus for all pain schemas</td></tr>
         <tr><td>3</td><td><code>uv run sender_agent.py</code></td><td>Publish all XML files to Kafka topics</td></tr>
         <tr><td>4</td><td><code>uv run receiver_agent.py</code></td><td>Consume, validate, deduplicate — Ctrl+C when done</td></tr>
-        <tr><td>5</td><td><code>uv run reconciliation_report.py</code></td><td>Generate HTML reconciliation proof</td></tr>
-        <tr><td>6</td><td><code>docker-compose down</code></td><td>Stop and remove Kafka container</td></tr>
+        <tr><td>5</td><td><code>uv run reconciliation_report.py</code></td><td>Generate HTML reconciliation report with DuckDB analytics</td></tr>
+        <tr><td>6</td><td><code>docker-compose down</code></td><td>Stop and remove Kafka + Kafka UI containers</td></tr>
       </tbody>
     </table>
 
@@ -827,7 +833,9 @@
         <tr><td><code>anthropic</code></td><td>&gt;=0.40, &lt;1.0</td><td>Claude API client</td><td>PEP 723 inline metadata / uv</td></tr>
         <tr><td><code>lxml</code></td><td>&gt;=5.0, &lt;6.0</td><td>XSD validation + safe XML parsing</td><td>PEP 723 inline metadata / uv</td></tr>
         <tr><td><code>kafka-python</code></td><td>&gt;=2.0, &lt;3.0</td><td>Kafka producer + consumer</td><td>PEP 723 inline metadata / uv</td></tr>
-        <tr><td><code>confluentinc/cp-kafka:7.6.0</code></td><td>7.6.0</td><td>Kafka broker (KRaft)</td><td>Docker</td></tr>
+        <tr><td><code>duckdb</code></td><td>&gt;=1.0, &lt;2.0</td><td>Analytics queries on state.db</td><td>PEP 723 inline metadata / uv</td></tr>
+        <tr><td><code>confluentinc/cp-kafka:7.6.0</code></td><td>7.6.0</td><td>Kafka broker (KRaft, dual listeners)</td><td>Docker</td></tr>
+        <tr><td><code>provectuslabs/kafka-ui:latest</code></td><td>latest</td><td>Kafka monitoring dashboard</td><td>Docker</td></tr>
         <tr><td>SQLite</td><td>3.x (stdlib)</td><td>Pipeline state store</td><td>Python standard library</td></tr>
       </tbody>
     </table>
@@ -920,6 +928,16 @@
         <div class="component-name">SQLite (WAL mode)</div>
         <div class="component-role">State Store</div>
         <p>Three tables: <code>sent_messages</code>, <code>processed_messages</code>, <code>duplicate_events</code>. WAL mode enables concurrent writes from 12 receiver threads. Parameterised queries throughout.</p>
+      </div>
+      <div class="component amber">
+        <div class="component-name">DuckDB 1.x</div>
+        <div class="component-role">Analytics Engine</div>
+        <p>Attaches directly to <code>state.db</code> via <code>ATTACH '...' AS state (TYPE sqlite)</code> — no data copying or import step. Runs three analytical queries in <code>reconciliation_report.py</code>: per-schema pass rate breakdown, validation error pattern ranking, and test category vs actual outcome cross-tabulation. Third-party library installed automatically via PEP 723 inline metadata.</p>
+      </div>
+      <div class="component green">
+        <div class="component-name">Kafka UI (provectuslabs)</div>
+        <div class="component-role">Monitoring Dashboard</div>
+        <p>Runs as a Docker service alongside Kafka. Available at <code>http://localhost:8080</code>. Connects to Kafka via the <code>PLAINTEXT_INTERNAL</code> listener (<code>kafka:29092</code>) — the Docker-internal address — to avoid the hostname resolution issue that occurs when containers use the externally advertised <code>localhost:9092</code> address.</p>
       </div>
     </div>
   </section>

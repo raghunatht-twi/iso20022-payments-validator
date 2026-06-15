@@ -40,6 +40,7 @@ docs/
 
 reports/        generated HTML reports (gitignored)
 state.db        SQLite pipeline state — sent, processed, duplicates (gitignored)
+docker-compose.yml  Confluent Kafka 7.6 + Kafka UI (ports 9092 and 8080)
 ```
 
 ## Prerequisites
@@ -145,11 +146,28 @@ sender_agent.py   →   Kafka topics   →   receiver_agent.py   →   reconcili
 ### Start Kafka
 
 ```bash
-docker-compose up -d        # starts Confluent Kafka 7.6 on port 9092 (KRaft, no Zookeeper)
+docker-compose up -d        # starts Confluent Kafka 7.6 on port 9092 + Kafka UI on port 8080
 docker-compose logs -f      # follow logs
 docker-compose down         # stop and remove
 docker-compose stop         # stop without removing
 ```
+
+### Kafka UI
+
+A visual dashboard for monitoring topics, messages, consumer group lag, and the DLQ in real time.
+
+```
+http://localhost:8080
+```
+
+Opens automatically once Kafka's healthcheck passes (~30s after `docker-compose up -d`).
+
+| Feature | Where in Kafka UI |
+|---|---|
+| Browse messages on any topic | Topics → select topic → Messages tab |
+| Inspect DLQ payloads | Topics → `iso20022.dlq` → Messages |
+| Consumer group lag (receiver progress) | Consumer Groups → `iso20022-receivers` |
+| Message throughput graphs | Dashboard |
 
 ### Run the pipeline
 
@@ -197,6 +215,14 @@ Each receiver thread prefixes every log line with its domain/message-set:
 - **Duplicates Caught** — re-sent messages detected and skipped
 
 A green "Fully reconciled" verdict appears when every sent message has been processed exactly once.
+
+The report also includes three **DuckDB analytics sections** (powered by DuckDB querying `state.db` directly):
+
+| Analytics Section | What it shows |
+|---|---|
+| Schema Breakdown | Per-message-set pass rate with visual bar chart |
+| Validation Error Patterns | Most common XSD error categories ranked by frequency |
+| Test Category vs Actual Outcome | How gen-pass / gen-fail / gen-edge files actually performed |
 
 ### Inspect the state database
 
