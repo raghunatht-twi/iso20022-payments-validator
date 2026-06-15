@@ -69,9 +69,11 @@ AI agent (calls Claude via Anthropic API) that generates ~50 synthetic XML test 
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
-uv run generate_test_data.py pain 001                        # one message set
 uv run generate_test_data.py pain                            # all message sets
-uv run generate_test_data.py --model=claude-opus-4-8 pain 001
+uv run generate_test_data.py pain 001                        # one message set
+uv run generate_test_data.py pain 001 002 005                # specific message sets
+uv run generate_test_data.py pain.001                        # dotted notation (one set)
+uv run generate_test_data.py --model=claude-opus-4-8 pain 001 002
 ```
 
 Default model: `claude-sonnet-4-6`. Adaptive thinking enabled automatically for Opus/Fable models only. Generated files: `gen-pass-NNN.xml`, `gen-fail-NNN.xml`, `gen-edge-NNN.xml`.
