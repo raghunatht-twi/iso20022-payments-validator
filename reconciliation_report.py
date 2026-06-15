@@ -1,15 +1,25 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = [
+#   "duckdb>=1.0,<2.0",
+# ]
 # ///
-"""Reconciliation report — proves every sent message was processed exactly once."""
+"""Reconciliation report — proves every sent message was processed exactly once.
+
+DuckDB analytics sections provide per-schema breakdowns, error pattern analysis,
+and test category vs actual outcome comparisons, all sourced from the SQLite state.db
+via DuckDB's native SQLite attachment.
+"""
 from __future__ import annotations
 
 import html
 import sqlite3
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+import duckdb
 
 
 _BASE_DIR = Path(__file__).parent
@@ -42,6 +52,92 @@ _STATUS_LABELS = {
     "duplicate":     "DUPLICATE",
 }
 
+
+# ── Analytics dataclass ────────────────────────────────────────────────────────
+
+@dataclass
+class AnalyticsResult:
+    schema_breakdown: list[tuple] = field(default_factory=list)
+    error_patterns:   list[tuple] = field(default_factory=list)
+    category_outcomes: list[tuple] = field(default_factory=list)
+
+
+# ── DuckDB analytics ───────────────────────────────────────────────────────────
+
+def _run_analytics(db_path: Path) -> AnalyticsResult | None:
+    try:
+        conn = duckdb.connect()
+        conn.execute(f"ATTACH '{db_path}' AS state (TYPE sqlite)")
+
+        schema_breakdown = conn.execute("""
+            SELECT
+                s.message_set,
+                COUNT(*)                                                              AS total_sent,
+                COUNT(p.message_id)                                                   AS processed,
+                SUM(CASE WHEN p.validation_status = 'pass' THEN 1 ELSE 0 END)        AS pass_count,
+                SUM(CASE WHEN p.validation_status = 'fail' THEN 1 ELSE 0 END)        AS fail_count,
+                COUNT(*) - COUNT(p.message_id)                                        AS pending,
+                ROUND(
+                    CASE WHEN COUNT(p.message_id) > 0
+                         THEN SUM(CASE WHEN p.validation_status = 'pass' THEN 1 ELSE 0 END)
+                              * 100.0 / COUNT(p.message_id)
+                         ELSE 0 END, 1
+                )                                                                     AS pass_rate
+            FROM state.sent_messages s
+            LEFT JOIN state.processed_messages p ON s.message_id = p.message_id
+            GROUP BY s.message_set
+            ORDER BY s.message_set
+        """).fetchall()
+
+        error_patterns = conn.execute("""
+            SELECT
+                CASE
+                    WHEN error_detail LIKE '%facet ''enumeration''%'  THEN 'Invalid enumeration value'
+                    WHEN error_detail LIKE '%facet ''pattern''%'       THEN 'Pattern / format violation'
+                    WHEN error_detail LIKE '%facet ''maxLength''%'     THEN 'String exceeds max length'
+                    WHEN error_detail LIKE '%facet ''minLength''%'     THEN 'Empty required field'
+                    WHEN error_detail LIKE '%facet ''minInclusive''%'  THEN 'Value below minimum'
+                    WHEN error_detail LIKE '%facet ''totalDigits''%'   THEN 'Too many digits'
+                    WHEN error_detail LIKE '%facet ''fractionDigits''%' THEN 'Too many decimal places'
+                    WHEN error_detail LIKE '%Missing child element%'   THEN 'Missing required element'
+                    WHEN error_detail LIKE '%not expected%'            THEN 'Wrong element order'
+                    WHEN error_detail LIKE '%XML syntax error%'        THEN 'XML syntax error'
+                    WHEN error_detail LIKE '%attribute ''Ccy''%'       THEN 'Missing currency (Ccy) attribute'
+                    ELSE 'Other validation error'
+                END                              AS error_category,
+                COUNT(*)                         AS occurrences,
+                COUNT(DISTINCT message_set)      AS schemas_affected
+            FROM state.processed_messages
+            WHERE validation_status = 'fail'
+              AND error_detail IS NOT NULL
+            GROUP BY error_category
+            ORDER BY occurrences DESC
+        """).fetchall()
+
+        category_outcomes = conn.execute("""
+            SELECT
+                CASE
+                    WHEN file_name LIKE 'gen-pass-%' THEN 'gen-pass'
+                    WHEN file_name LIKE 'gen-fail-%' THEN 'gen-fail'
+                    WHEN file_name LIKE 'gen-edge-%' THEN 'gen-edge'
+                    ELSE 'hand-crafted'
+                END              AS test_category,
+                validation_status,
+                COUNT(*)         AS count
+            FROM state.processed_messages
+            GROUP BY test_category, validation_status
+            ORDER BY test_category, validation_status
+        """).fetchall()
+
+        conn.close()
+        return AnalyticsResult(schema_breakdown, error_patterns, category_outcomes)
+
+    except Exception as exc:
+        print(f"Warning: DuckDB analytics failed — {exc}", file=sys.stderr)
+        return None
+
+
+# ── Existing report helpers ────────────────────────────────────────────────────
 
 def _summary_card(label: str, value: str | int, colour: str) -> str:
     return (
@@ -113,10 +209,180 @@ def _build_duplicate_rows(duplicates: list[sqlite3.Row]) -> str:
     )
 
 
+# ── Analytics HTML helpers ─────────────────────────────────────────────────────
+
+def _pass_rate_bar(rate: float) -> str:
+    colour = "#689E78" if rate >= 80 else "#CC850A" if rate >= 50 else "#F2617A"
+    return (
+        f'<div style="display:flex;align-items:center;gap:0.5rem;">'
+        f'<div style="flex:1;background:#e0eaee;border-radius:3px;height:8px;">'
+        f'<div style="width:{rate}%;background:{colour};border-radius:3px;height:8px;"></div>'
+        f'</div>'
+        f'<span style="font-size:0.8rem;font-weight:600;color:{colour};min-width:42px;">{rate}%</span>'
+        f'</div>'
+    )
+
+
+def _build_schema_breakdown_rows(rows: list[tuple]) -> str:
+    if not rows:
+        return "<tr><td colspan='7' style='text-align:center;color:#888;padding:1.5rem;'>No data.</td></tr>"
+    out = []
+    for msg_set, total, processed, pass_c, fail_c, pending, pass_rate in rows:
+        pending_cell = (
+            f'<span style="color:#CC850A;font-weight:600;">{pending}</span>'
+            if pending > 0 else f'<span style="color:#689E78;">0</span>'
+        )
+        out.append(
+            "<tr>"
+            f"<td><strong>pain.{html.escape(str(msg_set))}</strong></td>"
+            f"<td style='text-align:center;'>{total}</td>"
+            f"<td style='text-align:center;'>{processed}</td>"
+            f"<td style='text-align:center;color:#689E78;font-weight:600;'>{pass_c}</td>"
+            f"<td style='text-align:center;color:#F2617A;font-weight:600;'>{fail_c}</td>"
+            f"<td style='text-align:center;'>{pending_cell}</td>"
+            f"<td style='min-width:140px;'>{_pass_rate_bar(float(pass_rate))}</td>"
+            "</tr>"
+        )
+    return "\n".join(out)
+
+
+def _build_error_pattern_rows(rows: list[tuple]) -> str:
+    if not rows:
+        return "<tr><td colspan='3' style='text-align:center;color:#888;padding:1.5rem;'>No validation failures recorded.</td></tr>"
+    max_count = rows[0][1] if rows else 1
+    out = []
+    for category, occurrences, schemas in rows:
+        bar_width = int(occurrences / max_count * 100)
+        out.append(
+            "<tr>"
+            f"<td>{html.escape(str(category))}</td>"
+            f"<td style='min-width:160px;'>"
+            f'<div style="display:flex;align-items:center;gap:0.5rem;">'
+            f'<div style="flex:1;background:#e0eaee;border-radius:3px;height:8px;">'
+            f'<div style="width:{bar_width}%;background:#F2617A;border-radius:3px;height:8px;"></div>'
+            f'</div>'
+            f'<span style="font-size:0.8rem;font-weight:600;color:#F2617A;min-width:24px;">{occurrences}</span>'
+            f'</div></td>'
+            f"<td style='text-align:center;color:#555;font-size:0.85rem;'>{schemas}</td>"
+            "</tr>"
+        )
+    return "\n".join(out)
+
+
+def _build_category_outcome_rows(rows: list[tuple]) -> str:
+    if not rows:
+        return "<tr><td colspan='4' style='text-align:center;color:#888;padding:1.5rem;'>No data.</td></tr>"
+
+    # Group by category to compute totals for % calculation
+    totals: dict[str, int] = {}
+    for cat, _, count in rows:
+        totals[cat] = totals.get(cat, 0) + count
+
+    out = []
+    prev_cat = None
+    for cat, status, count in rows:
+        cat_cell = ""
+        if cat != prev_cat:
+            cat_cell = f"<strong>{html.escape(str(cat))}</strong>"
+            prev_cat = cat
+        pct = round(count / totals[cat] * 100, 1) if totals[cat] else 0
+        colour = "#689E78" if status == "pass" else "#F2617A"
+        note = ""
+        if (cat == "gen-pass" and status == "fail") or (cat == "gen-edge" and status == "fail"):
+            note = ' <span style="color:#CC850A;font-size:0.75rem;">(unexpected — AI recategorised)</span>'
+        if cat == "gen-fail" and status == "pass":
+            note = ' <span style="color:#CC850A;font-size:0.75rem;">(unexpected — should have failed)</span>'
+        out.append(
+            "<tr>"
+            f"<td style='font-family:monospace;font-size:0.85rem;'>{cat_cell}</td>"
+            f"<td>{_status_badge(status)}{note}</td>"
+            f"<td style='text-align:center;font-weight:600;color:{colour};'>{count}</td>"
+            f"<td style='min-width:120px;'>{_pass_rate_bar(pct)}</td>"
+            "</tr>"
+        )
+    return "\n".join(out)
+
+
+def _analytics_html(analytics: AnalyticsResult | None) -> str:
+    if analytics is None:
+        return ""
+
+    schema_rows   = _build_schema_breakdown_rows(analytics.schema_breakdown)
+    error_rows    = _build_error_pattern_rows(analytics.error_patterns)
+    category_rows = _build_category_outcome_rows(analytics.category_outcomes)
+
+    return f"""
+    <section>
+      <h2>Analytics — Schema Breakdown <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
+        Pass rate and processing status grouped by ISO 20022 message set.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Message Set</th>
+            <th style="text-align:center">Sent</th>
+            <th style="text-align:center">Processed</th>
+            <th style="text-align:center">Pass</th>
+            <th style="text-align:center">Fail</th>
+            <th style="text-align:center">Pending</th>
+            <th style="min-width:160px;">Pass Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schema_rows}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Analytics — Validation Error Patterns <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
+        Most common categories of XSD validation failure across all processed messages.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Error Category</th>
+            <th>Occurrences</th>
+            <th style="text-align:center">Schemas Affected</th>
+          </tr>
+        </thead>
+        <tbody>
+          {error_rows}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Analytics — Test Category vs Actual Outcome <span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span></h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
+        How AI-generated test files performed against the XSD — surfacing any mismatches
+        between the intended category and the actual validation result.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:18%">Test Category</th>
+            <th style="width:28%">Validation Outcome</th>
+            <th style="width:12%;text-align:center">Count</th>
+            <th>Share within category</th>
+          </tr>
+        </thead>
+        <tbody>
+          {category_rows}
+        </tbody>
+      </table>
+    </section>"""
+
+
+# ── Report generation ──────────────────────────────────────────────────────────
+
 def generate_report(
     sent: list[sqlite3.Row],
     processed: dict,
     duplicates: list[sqlite3.Row],
+    analytics: AnalyticsResult | None = None,
 ) -> Path:
     REPORT_DIR.mkdir(exist_ok=True)
     ts = datetime.now()
@@ -169,6 +435,7 @@ def generate_report(
     h2 {{ font-family: 'Bitter', serif; font-size: 1.2rem; font-weight: 600;
           color: var(--teal-dk); border-bottom: 2px solid var(--teal-dk);
           padding-bottom: 0.4rem; margin-bottom: 1.2rem; }}
+    p {{ font-size: 0.9rem; color: #333; margin-bottom: 0.6rem; }}
     .cards {{ display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem; }}
     .verdict {{ padding: 0.8rem 1.2rem; border-radius: 6px; background: var(--white);
                 box-shadow: 0 1px 4px rgba(0,0,0,0.08); }}
@@ -203,6 +470,8 @@ def generate_report(
       <div class="verdict">{reconciliation_verdict}</div>
     </section>
 
+    {_analytics_html(analytics)}
+
     <section>
       <h2>Message Processing Detail</h2>
       <table>
@@ -223,7 +492,7 @@ def generate_report(
 
     <section>
       <h2>Duplicate Detection Log</h2>
-      <p style="font-size:0.88rem;color:#555;margin-bottom:1rem;">
+      <p>
         Messages that arrived more than once — each was identified and recorded without
         reprocessing, proving exactly-once semantics.
       </p>
@@ -243,13 +512,15 @@ def generate_report(
     </section>
 
   </article>
-  <footer>reconciliation_report &mdash; Thoughtworks Financial Services Practice</footer>
+  <footer>reconciliation_report &mdash; DuckDB analytics &mdash; Thoughtworks Financial Services Practice</footer>
 </body>
 </html>"""
 
     report_path.write_text(doc, encoding="utf-8")
     return report_path
 
+
+# ── Entry point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
     if not STATE_DB.exists():
@@ -292,7 +563,14 @@ def main() -> None:
     print(f"Dupes    : {len(duplicates)}")
     print(f"Reconciled: {'YES' if n_unprocessed == 0 else 'NO — receiver still catching up'}")
 
-    report_path = generate_report(sent, processed, duplicates)
+    print("Running DuckDB analytics ...")
+    analytics = _run_analytics(STATE_DB)
+    if analytics:
+        print(f"  Schema breakdown  : {len(analytics.schema_breakdown)} message sets")
+        print(f"  Error patterns    : {len(analytics.error_patterns)} categories")
+        print(f"  Category outcomes : {len(analytics.category_outcomes)} rows")
+
+    report_path = generate_report(sent, processed, duplicates, analytics)
     print(f"\nReport   : {report_path}")
 
 
