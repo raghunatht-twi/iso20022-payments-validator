@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Architecture — ISO 20022 Payments Test Automation Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --white:   #FFFFFF;
+      --mist:    #EDF1F3;
+      --black:   #000000;
+      --teal-dk: #003D4F;
+      --coral:   #F2617A;
+      --amber:   #CC850A;
+      --green:   #689E78;
+      --teal:    #47A1AD;
+      --plum:    #634F7D;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: var(--mist); color: var(--black); line-height: 1.7; }
+
+    /* ── Header ── */
+    header {
+      background: var(--teal-dk);
+      color: var(--white);
+      padding: 3rem 4rem 2.5rem;
+    }
+    header .eyebrow {
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 0.6rem;
+    }
+    header h1 {
+      font-family: 'Bitter', serif;
+      font-size: 2.1rem;
+      font-weight: 700;
+      line-height: 1.2;
+      max-width: 740px;
+    }
+    header .meta {
+      margin-top: 1rem;
+      font-size: 0.82rem;
+      opacity: 0.72;
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--white);
+      border-bottom: 2px solid var(--mist);
+      padding: 0.9rem 4rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+    }
+    nav ul {
+      list-style: none;
+      display: flex;
+      gap: 1.8rem;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    nav a {
+      text-decoration: none;
+      color: var(--teal-dk);
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      opacity: 0.8;
+    }
+    nav a:hover { opacity: 1; color: var(--teal); }
+
+    /* ── Layout ── */
+    article {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 3.5rem 4rem;
+    }
+    section { margin-bottom: 3.5rem; }
+
+    h2 {
+      font-family: 'Bitter', serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--teal-dk);
+      border-bottom: 3px solid var(--teal-dk);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1.6rem;
+    }
+    h3 {
+      font-family: 'Bitter', serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--teal-dk);
+      margin: 2rem 0 0.7rem;
+    }
+    p { margin-bottom: 0.9rem; color: #222; font-size: 0.93rem; }
+
+    /* ── Diagram boxes ── */
+    .diagram {
+      background: #0d2330;
+      border-radius: 8px;
+      padding: 1.8rem 2rem;
+      margin: 1.4rem 0;
+      overflow-x: auto;
+    }
+    .diagram pre {
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 0.8rem;
+      color: #a8ccd8;
+      line-height: 1.6;
+      white-space: pre;
+    }
+    .diagram pre .hl    { color: #47A1AD; font-weight: 500; }
+    .diagram pre .green { color: #689E78; }
+    .diagram pre .coral { color: #F2617A; }
+    .diagram pre .amber { color: #CC850A; }
+    .diagram pre .plum  { color: #a88ccc; }
+    .diagram pre .dim   { color: #5a7a88; }
+
+    /* ── Component cards ── */
+    .component-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1.2rem 0;
+    }
+    .component {
+      background: var(--white);
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      padding: 1.4rem 1.6rem;
+      border-top: 4px solid var(--teal);
+    }
+    .component.green  { border-color: var(--green); }
+    .component.coral  { border-color: var(--coral); }
+    .component.amber  { border-color: var(--amber); }
+    .component.plum   { border-color: var(--plum); }
+    .component.teal   { border-color: var(--teal); }
+    .component-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--teal-dk);
+      margin-bottom: 0.4rem;
+    }
+    .component-role {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #888;
+      margin-bottom: 0.6rem;
+    }
+    .component p { font-size: 0.86rem; color: #444; margin: 0; }
+
+    /* ── Layered sections ── */
+    .layer {
+      background: var(--white);
+      border-radius: 10px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.09);
+      margin-bottom: 1.4rem;
+      overflow: hidden;
+    }
+    .layer-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 1.6rem;
+      background: var(--teal-dk);
+      color: var(--white);
+    }
+    .layer-num {
+      font-family: 'Bitter', serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      opacity: 0.5;
+      min-width: 36px;
+    }
+    .layer-title { font-family: 'Bitter', serif; font-size: 1.05rem; font-weight: 600; }
+    .layer-subtitle { font-size: 0.8rem; opacity: 0.75; margin-top: 0.1rem; }
+    .layer-body { padding: 1.4rem 1.6rem; }
+    .layer-body p { font-size: 0.88rem; }
+
+    /* ── Flow steps ── */
+    .flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 1rem 0;
+    }
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+    .flow-line {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 32px;
+    }
+    .flow-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--teal-dk);
+      color: var(--white);
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .flow-connector {
+      width: 2px;
+      flex: 1;
+      min-height: 18px;
+      background: #c0d0d8;
+      margin: 2px 0;
+    }
+    .flow-content {
+      padding: 2px 0 18px;
+      font-size: 0.87rem;
+      color: #333;
+      line-height: 1.5;
+    }
+    .flow-content strong { color: var(--teal-dk); }
+    .flow-content code {
+      font-family: 'JetBrains Mono', monospace;
+      background: #e4ecf0;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 0.78rem;
+    }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--white);
+      font-size: 0.86rem;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin: 1rem 0;
+    }
+    thead { background: var(--teal-dk); color: var(--white); }
+    thead th {
+      padding: 0.7rem 1rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    tbody td {
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid #d8e0e4;
+      vertical-align: top;
+      line-height: 1.55;
+    }
+    tbody tr:nth-child(even) { background: var(--mist); }
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      background: #e4ecf0;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 0.8rem;
+    }
+
+    /* ── Callout ── */
+    .callout {
+      border-radius: 0 6px 6px 0;
+      padding: 0.9rem 1.3rem;
+      margin: 1rem 0;
+      font-size: 0.88rem;
+    }
+    .callout.teal  { background: #e3f4f6; border-left: 4px solid var(--teal); color: #1a3d48; }
+    .callout.green { background: #edf7f0; border-left: 4px solid var(--green); color: #1e3d28; }
+    .callout.amber { background: #fff8e6; border-left: 4px solid var(--amber); color: #4a3000; }
+
+    /* ── Decision table ── */
+    .decision-row td:first-child { font-weight: 600; color: var(--teal-dk); width: 28%; }
+
+    footer {
+      text-align: center;
+      font-size: 0.78rem;
+      color: #888;
+      padding: 2rem;
+      border-top: 1px solid #ccc;
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 720px) {
+      header, nav { padding-left: 1.5rem; padding-right: 1.5rem; }
+      article { padding: 2rem 1.5rem; }
+      .component-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Architecture Document — Financial Services Practice</div>
+  <h1>ISO 20022 Payments Test Automation Platform</h1>
+  <div class="meta">
+    <span>Version 1.0 &mdash; June 2026</span>
+    <span>Domain: pain (Payments Initiation), message sets 001–018</span>
+    <span>Runtime: Python 3.11+ / uv / Docker</span>
+  </div>
+</header>
+
+<nav>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#layers">Architecture Layers</a></li>
+    <li><a href="#components">Components</a></li>
+    <li><a href="#data-flows">Data Flows</a></li>
+    <li><a href="#exactly-once">Exactly-Once</a></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#deployment">Deployment</a></li>
+    <li><a href="#decisions">Design Decisions</a></li>
+    <li><a href="#tech-stack">Tech Stack</a></li>
+  </ul>
+</nav>
+
+<article>
+
+  <!-- ── Overview ── -->
+  <section id="overview">
+    <h2>Overview</h2>
+    <p>
+      The ISO 20022 Payments Test Automation Platform is a three-layer system that automates the full
+      lifecycle of ISO 20022 message testing — from synthetic test data generation through event-driven
+      pipeline execution to auditable reconciliation reporting. It covers the <strong>pain</strong>
+      (Payments Initiation) domain across all 12 active message sets (001–018).
+    </p>
+    <p>
+      The platform combines an AI agent (powered by Claude), a multi-threaded Kafka pipeline, an XSD
+      validation engine (lxml), and a SQLite state store to eliminate the manual effort of creating,
+      processing, and proving completeness of ISO 20022 test suites.
+    </p>
+
+    <div class="diagram">
+      <pre>
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │                  ISO 20022 PAYMENTS TEST AUTOMATION PLATFORM         │
+  │                                                                      │
+  │  ┌──────────────────┐    ┌────────────────────┐    ┌─────────────┐  │
+  │  │  <span class="hl">LAYER 1</span>           │    │  <span class="hl">LAYER 2</span>            │    │  <span class="hl">LAYER 3</span>     │  │
+  │  │  Test Data Gen   │    │  Kafka Pipeline    │    │  Reporting  │  │
+  │  │                  │    │                    │    │             │  │
+  │  │  Claude API      │    │  sender_agent      │    │  validator  │  │
+  │  │       ↕          │───▶│       ↓            │───▶│  recon      │  │
+  │  │  generate_test   │    │    Kafka topics    │    │  report     │  │
+  │  │  _data.py        │    │       ↓            │    │             │  │
+  │  │                  │    │  receiver_agent    │    │             │  │
+  │  └──────────────────┘    └────────────────────┘    └─────────────┘  │
+  │         XSD files              SQLite                 HTML reports   │
+  │         XML fixtures           state.db               reports/       │
+  └─────────────────────────────────────────────────────────────────────┘
+      </pre>
+    </div>
+
+    <div class="callout teal">
+      <strong>Single external dependency:</strong> The Anthropic API (Claude) is the only external
+      service called at runtime. Everything else — Kafka, SQLite, validation — runs locally.
+    </div>
+  </section>
+
+  <!-- ── Architecture Layers ── -->
+  <section id="layers">
+    <h2>Architecture Layers</h2>
+
+    <!-- Layer 1 -->
+    <div class="layer">
+      <div class="layer-header">
+        <div class="layer-num">1</div>
+        <div>
+          <div class="layer-title">Test Data Generation</div>
+          <div class="layer-subtitle">generate_test_data.py — AI-powered synthetic XML generation</div>
+        </div>
+      </div>
+      <div class="layer-body">
+        <p>
+          An AI agent reads each XSD schema, extracts the target namespace, root element, and format
+          constraints, then prompts Claude to generate a corpus of ~50 XML test messages per schema.
+          Every generated message is immediately validated against the source XSD by lxml, and
+          re-categorised based on the actual validation result — not the model's stated intention.
+        </p>
+        <div class="diagram">
+          <pre>
+  XSD Schema (12 files)
+      │
+      ├─ <span class="hl">_extract_schema_facts()</span>     Extract: namespace URI, root element,
+      │                              format rules (IBAN, BIC, date, UETR)
+      │
+      ├─ <span class="hl">_build_prompt()</span>             Assemble: schema content + facts +
+      │                              category instructions (pass/fail/edge)
+      │
+      ├─ <span class="hl">_call_claude()</span>              Stream response from Claude API
+      │                              claude-sonnet-4-6 (default)
+      │
+      ├─ <span class="hl">_extract_json()</span>             Parse JSON array from model response
+      │
+      ├─ <span class="hl">etree.fromstring()</span>          Parse each XML with safe parser
+      ├─ <span class="hl">schema.validate()</span>           Validate against XSD
+      │
+      └─ <span class="hl">_actual_category()</span>          Re-bucket: pass / fail / edge
+              │
+              ▼
+  test_data/pain/{001…018}/
+      <span class="green">gen-pass-NNN.xml</span>   (35 per schema — valid messages)
+      <span class="coral">gen-fail-NNN.xml</span>   (10 per schema — deliberate violations)
+      <span class="plum">gen-edge-NNN.xml</span>   ( 5 per schema — boundary conditions)
+          </pre>
+        </div>
+        <p>
+          The 70 / 20 / 10 distribution ensures systematic coverage: the pass set exercises realistic
+          payment data diversity; the fail set verifies that validators correctly reject non-conformant
+          messages; the edge set probes boundary conditions such as maximum field lengths and Unicode
+          characters in name fields.
+        </p>
+      </div>
+    </div>
+
+    <!-- Layer 2 -->
+    <div class="layer">
+      <div class="layer-header">
+        <div class="layer-num">2</div>
+        <div>
+          <div class="layer-title">Kafka Pipeline</div>
+          <div class="layer-subtitle">sender_agent.py → Kafka → receiver_agent.py — event-driven validation with exactly-once semantics</div>
+        </div>
+      </div>
+      <div class="layer-body">
+        <p>
+          The pipeline streams every XML test message through Kafka, validates it against its schema,
+          and routes failures to a dead-letter queue. A multi-threaded receiver — one thread per
+          domain/message-set — processes all schemas in parallel. The combination of Kafka's
+          at-least-once delivery and SQLite's idempotent writes produces exactly-once processing
+          semantics without requiring Kafka transactions.
+        </p>
+        <div class="diagram">
+          <pre>
+  <span class="hl">sender_agent.py</span>
+    Discover: test_data/**/*.xml
+    Compute:  message_id = sha256(domain + msg_set + xml_bytes)
+    Skip if:  message_id already in sent_messages (idempotent re-runs)
+    Publish:  xml_content + metadata → iso20022.{domain}.{msg_set}
+    Record:   INSERT INTO sent_messages
+        │
+        ▼
+  <span class="hl">Kafka Broker</span>  (Docker, port 9092, KRaft mode)
+    ┌────────────────────────────────────────┐
+    │  <span class="green">iso20022.pain.001</span>  iso20022.pain.002  │
+    │  iso20022.pain.007  iso20022.pain.008  │   (one topic per schema)
+    │  iso20022.pain.009  iso20022.pain.010  │
+    │  iso20022.pain.011  iso20022.pain.012  │
+    │  iso20022.pain.013  iso20022.pain.014  │
+    │  iso20022.pain.017  iso20022.pain.018  │
+    │  <span class="coral">iso20022.dlq</span>                          │   (dead-letter queue)
+    └────────────────────────────────────────┘
+        │
+        ▼
+  <span class="hl">receiver_agent.py</span>  (12 threads, one per schema)
+    Poll Kafka (manual offset commit)
+      │
+      ├─ Already processed? ──YES──▶ record duplicate_event, commit offset
+      │
+      ├─ Validate XML with lxml
+      │     │
+      │     ├─ PASS ──▶ INSERT processed_messages (status=pass)
+      │     │            commit Kafka offset
+      │     │
+      │     └─ FAIL ──▶ forward to <span class="coral">iso20022.dlq</span>
+      │                  INSERT processed_messages (status=fail, error_detail)
+      │                  commit Kafka offset
+      │
+      └─ Offset committed AFTER DB write
+         (crash between validate and commit → redeliver → caught as duplicate)
+          </pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layer 3 -->
+    <div class="layer">
+      <div class="layer-header">
+        <div class="layer-num">3</div>
+        <div>
+          <div class="layer-title">Reporting</div>
+          <div class="layer-subtitle">ISO20022_validator.py + reconciliation_report.py — HTML artefacts for QA and compliance</div>
+        </div>
+      </div>
+      <div class="layer-body">
+        <p>
+          Two independent reporting scripts produce self-contained, Thoughtworks-branded HTML artefacts.
+          The validator report can be run at any time against any schema. The reconciliation report
+          reads the live SQLite state and produces a timestamped audit document proving processing completeness.
+        </p>
+        <div class="diagram">
+          <pre>
+  <span class="hl">ISO20022_validator.py</span>                 <span class="hl">reconciliation_report.py</span>
+    Input:  XSD schema + test XML files     Input:  state.db
+    Engine: lxml XMLSchema                  Join:   sent_messages ↔ processed_messages
+    Output: per-file PASS / FAIL            Output: per-message status
+            error messages + line numbers           duplicate detection log
+            suggested fix for each error            fully-reconciled verdict
+        │                                       │
+        ▼                                       ▼
+  <span class="green">reports/pain_001_YYYYMMDD.html</span>      <span class="green">reports/reconciliation_YYYYMMDD.html</span>
+          </pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Components ── -->
+  <section id="components">
+    <h2>Components</h2>
+
+    <div class="component-grid">
+      <div class="component green">
+        <div class="component-name">generate_test_data.py</div>
+        <div class="component-role">AI Agent</div>
+        <p>Reads XSD schemas, calls Claude API, generates 50 XML test messages per schema across three categories. Validates all AI output with lxml before saving. Produces a generation summary HTML report.</p>
+      </div>
+      <div class="component teal">
+        <div class="component-name">ISO20022_validator.py</div>
+        <div class="component-role">Validation Engine + Reporter</div>
+        <p>Validates any set of XML files against a specified XSD schema. Produces a Thoughtworks-branded HTML report with per-file PASS/FAIL, precise error locations, and suggested fixes. Hash-checks known schemas before loading.</p>
+      </div>
+      <div class="component amber">
+        <div class="component-name">sender_agent.py</div>
+        <div class="component-role">Kafka Producer</div>
+        <p>Discovers all XML test files, computes content-addressed SHA-256 message IDs, publishes to per-schema Kafka topics. Idempotent — skips files already recorded in <code>sent_messages</code>. Creates topics if they do not exist.</p>
+      </div>
+      <div class="component coral">
+        <div class="component-name">receiver_agent.py</div>
+        <div class="component-role">Kafka Consumer + Validator</div>
+        <p>Spawns one daemon thread per schema. Each thread polls its topic, checks for duplicates, validates XML with lxml, records results in SQLite, and forwards failures to the DLQ. Manual offset commit guarantees exactly-once.</p>
+      </div>
+      <div class="component plum">
+        <div class="component-name">reconciliation_report.py</div>
+        <div class="component-role">Audit Reporter</div>
+        <p>Reads <code>state.db</code> and joins the three tables to determine per-message status. Produces a timestamped HTML report with a green "Fully reconciled" verdict when all sent messages are accounted for.</p>
+      </div>
+      <div class="component">
+        <div class="component-name">docker-compose.yml</div>
+        <div class="component-role">Infrastructure</div>
+        <p>Defines a single-broker Confluent Kafka 7.6 instance in KRaft mode (no Zookeeper). Exposes port 9092. Includes a healthcheck that waits for the broker to be ready before the pipeline scripts connect.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Data Flows ── -->
+  <section id="data-flows">
+    <h2>Data Flows</h2>
+
+    <h3>End-to-end flow</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">1</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Schema discovery</strong> — <code>generate_test_data.py</code> scans <code>schema/pain/*/</code> and finds all XSD files.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">2</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Prompt construction</strong> — for each schema, the namespace URI, root element tag, and format constraints are extracted and embedded in a structured prompt alongside the raw XSD content.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">3</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>AI generation</strong> — Claude streams a JSON array of XML strings. The response is parsed and each XML is extracted.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">4</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Validation + categorisation</strong> — each XML string is parsed by lxml and validated against the XSD. The actual validation result determines the file category (<code>gen-pass</code>, <code>gen-fail</code>, <code>gen-edge</code>), overriding the model's stated category.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">5</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>File persistence</strong> — validated XML files are written to <code>test_data/pain/{msg_set}/</code> with sequential filenames.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">6</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Kafka publish</strong> — <code>sender_agent.py</code> reads each XML file, computes its SHA-256 message ID, and publishes it to the appropriate Kafka topic. The send is recorded in <code>sent_messages</code>.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">7</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Kafka consume</strong> — each receiver thread polls its topic, checks whether the message ID was already processed, validates the XML content, and writes the outcome to <code>processed_messages</code>. Failures are forwarded to <code>iso20022.dlq</code>.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-dot">8</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Reconciliation</strong> — <code>reconciliation_report.py</code> reads all three SQLite tables and produces an HTML audit report. A "Fully reconciled" verdict is issued when every row in <code>sent_messages</code> has a corresponding row in <code>processed_messages</code>.</div>
+      </div>
+    </div>
+
+    <h3>State database schema</h3>
+    <p>SQLite in WAL mode — three tables, written by separate scripts, read by the reconciliation report.</p>
+    <table>
+      <thead>
+        <tr><th>Table</th><th>Written by</th><th>Key columns</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>sent_messages</code></td>
+          <td><code>sender_agent.py</code></td>
+          <td><code>message_id PK</code>, <code>domain</code>, <code>message_set</code>, <code>file_name</code>, <code>kafka_topic</code>, <code>sent_at</code></td>
+          <td>Audit log of every message published to Kafka</td>
+        </tr>
+        <tr>
+          <td><code>processed_messages</code></td>
+          <td><code>receiver_agent.py</code></td>
+          <td><code>message_id PK</code>, <code>validation_status</code>, <code>processed_at</code>, <code>error_detail</code>, <code>dlq_topic</code></td>
+          <td>One row per unique message — idempotency anchor</td>
+        </tr>
+        <tr>
+          <td><code>duplicate_events</code></td>
+          <td><code>receiver_agent.py</code></td>
+          <td><code>id PK AUTOINCREMENT</code>, <code>message_id</code>, <code>detected_at</code></td>
+          <td>Audit log of every re-delivery caught by the receiver</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Kafka topic layout</h3>
+    <table>
+      <thead>
+        <tr><th>Topic</th><th>Producer</th><th>Consumer</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>iso20022.pain.001</code></td><td rowspan="6"><code>sender_agent</code></td><td><code>receiver thread pain.001</code></td><td>Customer Credit Transfer Initiation</td></tr>
+        <tr><td><code>iso20022.pain.002</code></td><td><code>receiver thread pain.002</code></td><td>Payment Status Report</td></tr>
+        <tr><td><code>iso20022.pain.007</code></td><td><code>receiver thread pain.007</code></td><td>Customer Payment Reversal</td></tr>
+        <tr><td><code>iso20022.pain.008</code></td><td><code>receiver thread pain.008</code></td><td>Customer Direct Debit Initiation</td></tr>
+        <tr><td><code>iso20022.pain.009–018</code></td><td><code>receiver threads pain.009–018</code></td><td>Mandate management messages</td></tr>
+        <tr><td><code>iso20022.dlq</code></td><td><code>receiver_agent</code> (all threads)</td><td>Dead-letter queue — validation failures</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── Exactly-Once ── -->
+  <section id="exactly-once">
+    <h2>Exactly-Once Processing Guarantee</h2>
+    <p>
+      Exactly-once semantics are achieved by combining Kafka's at-least-once delivery guarantees with
+      application-level idempotency in SQLite — without requiring Kafka transactions or a distributed
+      coordinator.
+    </p>
+
+    <div class="diagram">
+      <pre>
+  GUARANTEE LAYERS
+
+  <span class="hl">Layer 1 — Content-addressed message ID</span>
+    message_id = sha256( domain + "." + msg_set + ":" + xml_bytes )
+    Same file → same ID, always.
+    Different file same name in different schema → different ID (scope prefix prevents collision).
+
+  <span class="hl">Layer 2 — Idempotent database write</span>
+    INSERT OR IGNORE INTO processed_messages VALUES (message_id, ...)
+    Second INSERT for the same message_id is silently discarded by SQLite.
+
+  <span class="hl">Layer 3 — Offset commit after DB write</span>
+    consumer.poll()  →  validate  →  INSERT OR IGNORE  →  consumer.commit()
+                                                              ↑
+    Crash here ───────────────────────────────── Kafka redelivers message
+    (redeliver is caught by Layer 2 as a duplicate — recorded in duplicate_events)
+
+  <span class="hl">Layer 4 — Duplicate audit trail</span>
+    Every re-delivery is recorded in duplicate_events (not silently dropped).
+    Reconciliation report shows "Duplicates Caught" separately from processed messages.
+
+  <span class="green">RESULT: every message in sent_messages appears exactly once in processed_messages</span>
+  <span class="green">regardless of restarts, redeliveries, or re-runs of sender_agent.</span>
+      </pre>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Scenario</th><th>What happens</th><th>Outcome</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Normal processing</td><td>Message validated → INSERT processed_messages → commit offset</td><td>Processed exactly once</td></tr>
+        <tr><td>Receiver crashes after INSERT, before commit</td><td>Kafka redelivers → Layer 2 INSERT OR IGNORE discards second write</td><td>Processed exactly once, duplicate logged</td></tr>
+        <tr><td>sender_agent re-run</td><td>sender checks sent_messages first — already-sent files skipped entirely</td><td>No duplicate on Kafka</td></tr>
+        <tr><td>Kafka redelivery (transient broker issue)</td><td>receiver sees duplicate message_id → skips processing, logs duplicate</td><td>Processed exactly once, duplicate logged</td></tr>
+        <tr><td>Validation failure</td><td>XML forwarded to DLQ → INSERT processed_messages (status=fail) → commit</td><td>Recorded as fail, not lost</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── Security ── -->
+  <section id="security">
+    <h2>Security Architecture</h2>
+    <p>
+      Security controls are applied at every boundary where untrusted data enters the system. The
+      design follows OWASP Top 10 for LLM Applications (v2, 2025).
+    </p>
+
+    <div class="diagram">
+      <pre>
+  TRUST BOUNDARIES
+
+  ┌───────────────────────────────────────────────────────┐
+  │  TRUSTED ZONE (local filesystem, controlled inputs)   │
+  │                                                       │
+  │  schema/*.xsd       ← hash-checked before use        │
+  │  test_data/**/*.xml ← symlink-escape check applied   │
+  │  state.db           ← parameterised SQL throughout   │
+  └──────────────────────────┬────────────────────────────┘
+                             │ untrusted data crosses here
+              ┌──────────────▼──────────────┐
+              │   INPUT VALIDATION LAYER    │
+              │                             │
+              │  domain arg → regex check   │  ← LLM06: path traversal
+              │  file size  → cap at 10MB   │  ← LLM10: resource cap
+              │  file count → cap at 500    │  ← LLM10: resource cap
+              │  XML parser → safe flags    │  ← LLM10: XXE / entity
+              │  HTML output → escape()     │  ← LLM05: XSS
+              └──────────────┬──────────────┘
+                             │
+              ┌──────────────▼──────────────┐
+              │  EXTERNAL SURFACE           │
+              │                             │
+              │  Claude API  (HTTPS)        │  ← API key via env var only
+              │  Kafka       (PLAINTEXT*)   │  ← *local dev only
+              └─────────────────────────────┘
+      </pre>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Control</th><th>Where applied</th><th>Threat mitigated</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Domain regex <code>^[a-z]{4}(\.\d{3}){0,3}$</code></td><td>All scripts — before any file I/O</td><td>Path traversal, command injection</td></tr>
+        <tr><td>Hardened lxml parser (<code>resolve_entities=False</code>, <code>no_network=True</code>, <code>huge_tree=False</code>, <code>load_dtd=False</code>)</td><td>All XML parse calls</td><td>XXE, billion-laughs, DTD injection, SSRF via schema</td></tr>
+        <tr><td>File size cap (10 MB XML, 100 KB XSD)</td><td>Validator + generator</td><td>Memory exhaustion</td></tr>
+        <tr><td>File count cap (500 max)</td><td>Validator</td><td>Unbounded processing loop</td></tr>
+        <tr><td><code>html.escape()</code> on all LLM-sourced strings</td><td>All three HTML reporters</td><td>XSS in generated reports</td></tr>
+        <tr><td>Parameterised SQL (<code>?</code> placeholders)</td><td>All SQLite writes</td><td>SQL injection</td></tr>
+        <tr><td>SHA-256 schema integrity check</td><td><code>ISO20022_validator.py</code></td><td>Schema tampering / data poisoning</td></tr>
+        <tr><td>Symlink escape check (<code>resolve().is_relative_to()</code>)</td><td><code>find_test_files()</code></td><td>Symlink traversal to outside test_data/</td></tr>
+        <tr><td>Relative paths in HTML reports</td><td>All reporters</td><td>Host directory disclosure</td></tr>
+        <tr><td>API key via environment variable only</td><td><code>anthropic.Anthropic()</code></td><td>Credential exposure in code/logs</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout amber">
+      <strong>Known gap:</strong> SHA-256 integrity checking covers only <code>pain.001.001.13.xsd</code>.
+      The remaining 11 schemas should be added to <code>_SCHEMA_HASHES</code> in
+      <code>ISO20022_validator.py</code>. Run <code>sha256sum schema/pain/*/*.xsd</code> to generate the hashes.
+    </div>
+  </section>
+
+  <!-- ── Deployment ── -->
+  <section id="deployment">
+    <h2>Deployment Architecture</h2>
+    <p>
+      The platform is designed for local developer workstation use. All runtime components run on
+      a single machine. The only network call is outbound HTTPS to the Anthropic API.
+    </p>
+
+    <div class="diagram">
+      <pre>
+  DEVELOPER WORKSTATION
+  ┌─────────────────────────────────────────────────────────────┐
+  │                                                             │
+  │  Python runtime (uv)                                        │
+  │  ┌──────────────────────────────────────────────────────┐   │
+  │  │  generate_test_data.py   ──── HTTPS ──▶ Anthropic   │   │
+  │  │  ISO20022_validator.py                  Claude API   │   │
+  │  │  sender_agent.py    ─────────────────────────────┐  │   │
+  │  │  receiver_agent.py  ◀────────────────────────────┤  │   │
+  │  │  reconciliation_report.py                        │  │   │
+  │  └───────────────────────┬──────────────────────────┘  │   │
+  │                          │ localhost:9092               │   │
+  │  Docker Engine            │                             │   │
+  │  ┌────────────────────────▼────────────────────────┐   │   │
+  │  │  confluentinc/cp-kafka:7.6.0  (KRaft, no ZK)   │   │   │
+  │  │  Broker + Controller on same node               │   │   │
+  │  │  Topics auto-created by sender_agent            │   │   │
+  │  └─────────────────────────────────────────────────┘   │   │
+  │                                                         │   │
+  │  Filesystem                                             │   │
+  │    schema/pain/*/          XSD schemas (git tracked)   │   │
+  │    test_data/pain/*/       XML fixtures (git tracked)  │   │
+  │    state.db                SQLite WAL  (gitignored)    │   │
+  │    reports/                HTML reports (gitignored)   │   │
+  └─────────────────────────────────────────────────────────┘
+      </pre>
+    </div>
+
+    <h3>Run sequence</h3>
+    <table>
+      <thead>
+        <tr><th>Step</th><th>Command</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>0 (once)</td><td><code>export ANTHROPIC_API_KEY="sk-ant-..."</code></td><td>Set API key in shell environment</td></tr>
+        <tr><td>1</td><td><code>docker-compose up -d</code></td><td>Start Kafka broker — wait ~30s for healthcheck</td></tr>
+        <tr><td>2 (optional)</td><td><code>uv run generate_test_data.py pain</code></td><td>Generate XML test corpus for all pain schemas</td></tr>
+        <tr><td>3</td><td><code>uv run sender_agent.py</code></td><td>Publish all XML files to Kafka topics</td></tr>
+        <tr><td>4</td><td><code>uv run receiver_agent.py</code></td><td>Consume, validate, deduplicate — Ctrl+C when done</td></tr>
+        <tr><td>5</td><td><code>uv run reconciliation_report.py</code></td><td>Generate HTML reconciliation proof</td></tr>
+        <tr><td>6</td><td><code>docker-compose down</code></td><td>Stop and remove Kafka container</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Dependencies</h3>
+    <table>
+      <thead>
+        <tr><th>Dependency</th><th>Version</th><th>Purpose</th><th>How installed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>anthropic</code></td><td>&gt;=0.40, &lt;1.0</td><td>Claude API client</td><td>PEP 723 inline metadata / uv</td></tr>
+        <tr><td><code>lxml</code></td><td>&gt;=5.0, &lt;6.0</td><td>XSD validation + safe XML parsing</td><td>PEP 723 inline metadata / uv</td></tr>
+        <tr><td><code>kafka-python</code></td><td>&gt;=2.0, &lt;3.0</td><td>Kafka producer + consumer</td><td>PEP 723 inline metadata / uv</td></tr>
+        <tr><td><code>confluentinc/cp-kafka:7.6.0</code></td><td>7.6.0</td><td>Kafka broker (KRaft)</td><td>Docker</td></tr>
+        <tr><td>SQLite</td><td>3.x (stdlib)</td><td>Pipeline state store</td><td>Python standard library</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── Design Decisions ── -->
+  <section id="decisions">
+    <h2>Key Design Decisions</h2>
+
+    <table class="decision-row">
+      <thead>
+        <tr><th>Decision</th><th>Alternatives considered</th><th>Rationale</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>One Kafka topic per schema</td>
+          <td>Single topic with schema discriminator field</td>
+          <td>Independent receiver threads — a failing schema does not block others. Natural consumer group partitioning. Topic name encodes the schema identity explicitly.</td>
+        </tr>
+        <tr>
+          <td>SHA-256 as message ID (content-addressed)</td>
+          <td>UUID generated at send time; file path as ID</td>
+          <td>Same file content always produces the same ID regardless of when or how many times it is sent. Scoped with domain+msg_set prefix to prevent cross-schema ID collisions.</td>
+        </tr>
+        <tr>
+          <td>SQLite for state (not Kafka itself)</td>
+          <td>Kafka consumer group offsets only; Redis; Postgres</td>
+          <td>Zero infrastructure beyond Kafka. SQLite WAL mode handles concurrent multi-thread writes. Queryable with standard SQL for reconciliation and inspection.</td>
+        </tr>
+        <tr>
+          <td>Offset commit after DB write</td>
+          <td>Auto-commit; commit before write</td>
+          <td>Guarantees at-least-once delivery. Combined with INSERT OR IGNORE, produces exactly-once processing without Kafka transactions.</td>
+        </tr>
+        <tr>
+          <td>lxml re-validates all AI output</td>
+          <td>Trust the model's stated category</td>
+          <td>LLM output is treated as untrusted. Ground truth is the XSD validator. Mismatch counts surface model accuracy without blocking the pipeline.</td>
+        </tr>
+        <tr>
+          <td>Schema facts extracted and injected into prompt</td>
+          <td>Send raw XSD only; send no schema context</td>
+          <td>Reduces hallucination on schema-specific rules (namespace URI, element ordering). Injecting concrete facts (IBAN pattern, BIC format) significantly reduces recategorisation rate.</td>
+        </tr>
+        <tr>
+          <td>KRaft mode for Kafka (no Zookeeper)</td>
+          <td>Kafka + Zookeeper (classic mode)</td>
+          <td>Simpler docker-compose (one container). KRaft is the default from Kafka 3.3+. Eliminates the Zookeeper failure domain for local development.</td>
+        </tr>
+        <tr>
+          <td>PEP 723 inline script dependencies</td>
+          <td>requirements.txt; pyproject.toml; Pipfile</td>
+          <td>Each script is self-contained — no shared virtual environment setup. <code>uv run script.py</code> installs exactly what that script needs and nothing more.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── Tech Stack ── -->
+  <section id="tech-stack">
+    <h2>Technology Stack</h2>
+
+    <div class="component-grid">
+      <div class="component green">
+        <div class="component-name">Python 3.11+</div>
+        <div class="component-role">Application Runtime</div>
+        <p>All five scripts. Uses <code>from __future__ import annotations</code>, dataclasses, type annotations, threading, signal handling, and pathlib throughout.</p>
+      </div>
+      <div class="component teal">
+        <div class="component-name">uv</div>
+        <div class="component-role">Package Manager</div>
+        <p>Replaces pip + venv. PEP 723 inline metadata means each script declares and installs its own dependencies on first run. No global environment to manage.</p>
+      </div>
+      <div class="component amber">
+        <div class="component-name">lxml 5.x</div>
+        <div class="component-role">XML / XSD Engine</div>
+        <p>Wraps libxml2 + libxslt. Provides <code>etree.XMLSchema</code> for XSD validation, <code>etree.XMLParser</code> with hardened flags, and <code>schema.error_log</code> for precise error messages.</p>
+      </div>
+      <div class="component coral">
+        <div class="component-name">Anthropic Python SDK</div>
+        <div class="component-role">LLM Client</div>
+        <p>Streaming Messages API. Adaptive thinking enabled automatically for Opus/Fable models. Default model: <code>claude-sonnet-4-6</code>. Override via <code>--model=</code> CLI flag.</p>
+      </div>
+      <div class="component plum">
+        <div class="component-name">Apache Kafka 7.6 (Confluent)</div>
+        <div class="component-role">Message Broker</div>
+        <p>KRaft mode — no Zookeeper. Single broker, 3 partitions per topic, replication factor 1. Consumer group: <code>iso20022-receivers</code>. DLQ topic: <code>iso20022.dlq</code>.</p>
+      </div>
+      <div class="component">
+        <div class="component-name">SQLite (WAL mode)</div>
+        <div class="component-role">State Store</div>
+        <p>Three tables: <code>sent_messages</code>, <code>processed_messages</code>, <code>duplicate_events</code>. WAL mode enables concurrent writes from 12 receiver threads. Parameterised queries throughout.</p>
+      </div>
+    </div>
+  </section>
+
+</article>
+
+<footer>
+  ISO 20022 Payments Test Automation Platform — Architecture Document v1.0 — Thoughtworks Financial Services Practice — June 2026
+</footer>
+
+</body>
+</html>
