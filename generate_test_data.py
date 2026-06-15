@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #   "anthropic>=0.40,<1.0",
+#   "httpx>=0.25,<1.0",
 #   "lxml>=5.0,<6.0",
 # ]
 # ///
@@ -18,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 import anthropic
+import httpx
 from lxml import etree
 
 
@@ -328,6 +330,11 @@ def _generate_cases_for_category(
             continue
         except anthropic.APIError as exc:
             print(f"      attempt {attempt}: API error — {exc}", file=sys.stderr)
+            if attempt < _MAX_RETRIES:
+                time.sleep(_RETRY_DELAY_SECS)
+            continue
+        except httpx.ReadError as exc:
+            print(f"      attempt {attempt}: connection reset — {exc}", file=sys.stderr)
             if attempt < _MAX_RETRIES:
                 time.sleep(_RETRY_DELAY_SECS)
             continue
