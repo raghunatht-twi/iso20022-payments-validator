@@ -47,6 +47,12 @@ _STATUS_LABELS = {
     "duplicate":     "DUPLICATE",
 }
 
+_SCHEMA_COLOURS: list[str] = [
+    "#003D4F", "#F2617A", "#CC850A", "#689E78",
+    "#47A1AD", "#634F7D", "#E8882B", "#2D6DA4",
+    "#B85C38", "#5B8C5A", "#9B59B6", "#1ABC9C",
+]
+
 
 @dataclass
 class AnalyticsResult:
@@ -54,6 +60,9 @@ class AnalyticsResult:
     error_patterns:    list[tuple] = field(default_factory=list)
     category_outcomes: list[tuple] = field(default_factory=list)
     tampered_by_set:   list[tuple] = field(default_factory=list)
+    latency_by_schema: list[tuple] = field(default_factory=list)
+    pipeline_timeline: tuple | None = None
+    latency_scatter:   list[tuple] = field(default_factory=list)
 
 
 def _query_schema_breakdown(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
@@ -122,6 +131,66 @@ def _query_category_outcomes(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
     """).fetchall()
 
 
+def _query_latency_by_schema(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
+    return conn.execute("""
+        SELECT
+            s.message_set,
+            COUNT(*)                                                                   AS msg_count,
+            ROUND(MIN(
+                epoch_ms(p.processed_at::TIMESTAMPTZ) - epoch_ms(s.sent_at::TIMESTAMPTZ)
+            ) / 1000.0, 2)                                                             AS min_sec,
+            ROUND(AVG(
+                epoch_ms(p.processed_at::TIMESTAMPTZ) - epoch_ms(s.sent_at::TIMESTAMPTZ)
+            ) / 1000.0, 2)                                                             AS avg_sec,
+            ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY
+                epoch_ms(p.processed_at::TIMESTAMPTZ) - epoch_ms(s.sent_at::TIMESTAMPTZ)
+            ) / 1000.0, 2)                                                             AS p95_sec,
+            ROUND(MAX(
+                epoch_ms(p.processed_at::TIMESTAMPTZ) - epoch_ms(s.sent_at::TIMESTAMPTZ)
+            ) / 1000.0, 2)                                                             AS max_sec,
+            ROUND(
+                epoch_ms(MAX(p.processed_at::TIMESTAMPTZ)) - epoch_ms(MIN(p.processed_at::TIMESTAMPTZ))
+            , 1)                                                                        AS receiver_span_ms
+        FROM state.sent_messages s
+        JOIN state.processed_messages p ON s.message_id = p.message_id
+        GROUP BY s.message_set
+        ORDER BY avg_sec DESC
+    """).fetchall()
+
+
+def _query_latency_scatter(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
+    return conn.execute("""
+        SELECT
+            s.message_set,
+            s.file_name,
+            ROW_NUMBER() OVER (ORDER BY s.sent_at)                                    AS seq_num,
+            ROUND((epoch_ms(p.processed_at::TIMESTAMPTZ)
+                   - epoch_ms(s.sent_at::TIMESTAMPTZ)) / 1000.0, 3)                  AS latency_sec
+        FROM state.sent_messages s
+        JOIN state.processed_messages p ON s.message_id = p.message_id
+        ORDER BY seq_num
+    """).fetchall()
+
+
+def _query_pipeline_timeline(conn: duckdb.DuckDBPyConnection) -> tuple | None:
+    return conn.execute("""
+        SELECT
+            ROUND((epoch_ms(MAX(s.sent_at::TIMESTAMPTZ))
+                   - epoch_ms(MIN(s.sent_at::TIMESTAMPTZ))) / 1000.0, 3)              AS sender_sec,
+            ROUND((epoch_ms(MIN(p.processed_at::TIMESTAMPTZ))
+                   - epoch_ms(MAX(s.sent_at::TIMESTAMPTZ))) / 1000.0, 3)              AS wait_sec,
+            ROUND((epoch_ms(MAX(p.processed_at::TIMESTAMPTZ))
+                   - epoch_ms(MIN(p.processed_at::TIMESTAMPTZ))) / 1000.0, 3)         AS receiver_sec,
+            COUNT(*)                                                                   AS total_messages,
+            ROUND(COUNT(*) * 1000.0 / NULLIF(
+                epoch_ms(MAX(p.processed_at::TIMESTAMPTZ))
+                - epoch_ms(MIN(p.processed_at::TIMESTAMPTZ)), 0
+            ), 0)                                                                      AS throughput_per_sec
+        FROM state.sent_messages s
+        JOIN state.processed_messages p ON s.message_id = p.message_id
+    """).fetchone()
+
+
 def _query_tampered_by_set(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
     return conn.execute("""
         SELECT
@@ -142,6 +211,9 @@ def _run_analytics(db_path: Path) -> AnalyticsResult | None:
             error_patterns=_query_error_patterns(conn),
             category_outcomes=_query_category_outcomes(conn),
             tampered_by_set=_query_tampered_by_set(conn),
+            latency_by_schema=_query_latency_by_schema(conn),
+            pipeline_timeline=_query_pipeline_timeline(conn),
+            latency_scatter=_query_latency_scatter(conn),
         )
         conn.close()
         return result
@@ -351,6 +423,61 @@ def _build_tampered_by_set_rows(rows: list[tuple]) -> str:
     return "\n".join(out)
 
 
+def _pipeline_phase_card(label: str, value: str, sub: str, colour: str) -> str:
+    return (
+        f'<div style="flex:1;background:{colour};color:#fff;border-radius:6px;'
+        f'padding:1.1rem 1.4rem;min-width:160px;">'
+        f'<div style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;'
+        f'text-transform:uppercase;opacity:0.8;margin-bottom:0.3rem;">{label}</div>'
+        f'<div style="font-size:1.7rem;font-weight:700;line-height:1;">{value}</div>'
+        f'<div style="font-size:0.78rem;margin-top:0.4rem;opacity:0.85;">{sub}</div>'
+        f'</div>'
+    )
+
+
+def _pipeline_phases_html(tl: tuple) -> str:
+    sender_sec, wait_sec, receiver_sec, total_msgs, throughput = tl
+    arrow = '<div style="font-size:1.4rem;color:#47A1AD;align-self:center;padding:0 0.3rem;">→</div>'
+    phases = (
+        _pipeline_phase_card("Sender publish", f"{sender_sec}s", f"{total_msgs} messages signed &amp; published", "#003D4F")
+        + arrow
+        + _pipeline_phase_card("Consumer startup", f"{wait_sec}s", "group rebalance across 12 topics", "#CC850A")
+        + arrow
+        + _pipeline_phase_card("Receiver burst", f"{receiver_sec}s", f"{int(throughput):,} msg/s · verify → validate → store", "#689E78")
+    )
+    return (
+        f'<div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1.4rem;">{phases}</div>'
+    )
+
+
+def _build_latency_rows(rows: list[tuple]) -> str:
+    if not rows:
+        return "<tr><td colspan='7' style='text-align:center;color:#888;padding:1.5rem;'>No latency data.</td></tr>"
+    max_span = max(r[6] for r in rows) or 1
+    out = []
+    for msg_set, count, min_s, avg_s, p95_s, max_s, span_ms in rows:
+        bar_pct = int(span_ms / max_span * 100)
+        out.append(
+            "<tr>"
+            f"<td><strong>pain.{html.escape(str(msg_set))}</strong></td>"
+            f"<td style='text-align:center;'>{count}</td>"
+            f"<td style='text-align:center;font-family:monospace;'>{min_s}</td>"
+            f"<td style='text-align:center;font-family:monospace;font-weight:600;'>{avg_s}</td>"
+            f"<td style='text-align:center;font-family:monospace;'>{p95_s}</td>"
+            f"<td style='text-align:center;font-family:monospace;'>{max_s}</td>"
+            f"<td style='min-width:140px;'>"
+            f'<div style="display:flex;align-items:center;gap:0.5rem;">'
+            f'<div style="flex:1;background:#e0eaee;border-radius:3px;height:8px;">'
+            f'<div style="width:{bar_pct}%;background:#47A1AD;border-radius:3px;height:8px;"></div>'
+            f'</div>'
+            f'<span style="font-size:0.78rem;color:#555;min-width:48px;">{span_ms:.0f} ms</span>'
+            f'</div>'
+            "</td>"
+            "</tr>"
+        )
+    return "\n".join(out)
+
+
 _DUCKDB_BADGE = '<span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span>'
 
 
@@ -450,6 +577,142 @@ def _tampered_by_set_html(rows: list[tuple]) -> str:
     </section>"""
 
 
+def _build_scatter_svg(rows: list[tuple]) -> str:
+    if not rows:
+        return '<p style="color:#888;">No scatter data available.</p>'
+
+    W, H = 820, 410
+    ml, mr, mt, mb = 68, 175, 30, 55
+    pw, ph = W - ml - mr, H - mt - mb
+
+    schemas: list[str] = list(dict.fromkeys(r[0] for r in rows))
+    colour_map = {s: _SCHEMA_COLOURS[i % len(_SCHEMA_COLOURS)] for i, s in enumerate(schemas)}
+
+    lat_vals = [r[3] for r in rows]
+    seq_max  = len(rows)
+    y_lo_raw, y_hi_raw = min(lat_vals), max(lat_vals)
+    y_pad    = max((y_hi_raw - y_lo_raw) * 0.12, 0.05)
+    y_lo, y_hi = y_lo_raw - y_pad, y_hi_raw + y_pad
+
+    def sx(seq: int) -> float:
+        return ml + (seq - 1) / max(seq_max - 1, 1) * pw
+
+    def sy(lat: float) -> float:
+        return mt + ph - (lat - y_lo) / (y_hi - y_lo) * ph
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
+        f'style="width:100%;max-width:{W}px;font-family:Inter,sans-serif;display:block;">'
+    ]
+
+    parts.append(f'<rect x="{ml}" y="{mt}" width="{pw}" height="{ph}" fill="#f5f8fa" rx="2"/>')
+
+    n_y = 5
+    for i in range(n_y + 1):
+        lat = y_lo + (y_hi - y_lo) * i / n_y
+        yp  = sy(lat)
+        parts.append(f'<line x1="{ml}" y1="{yp:.1f}" x2="{ml+pw}" y2="{yp:.1f}" stroke="#dde3e7" stroke-width="1"/>')
+        parts.append(
+            f'<text x="{ml-7}" y="{yp:.1f}" text-anchor="end" dominant-baseline="middle" '
+            f'font-size="11" fill="#555">{lat:.2f}</text>'
+        )
+
+    tick_step = 100
+    for seq in list(range(1, seq_max, tick_step)) + [seq_max]:
+        xp = sx(seq)
+        parts.append(f'<line x1="{xp:.1f}" y1="{mt+ph}" x2="{xp:.1f}" y2="{mt+ph+4}" stroke="#888" stroke-width="1"/>')
+        parts.append(
+            f'<text x="{xp:.1f}" y="{mt+ph+16}" text-anchor="middle" font-size="11" fill="#555">{seq}</text>'
+        )
+
+    parts.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{mt+ph}" stroke="#003D4F" stroke-width="1.5"/>')
+    parts.append(f'<line x1="{ml}" y1="{mt+ph}" x2="{ml+pw}" y2="{mt+ph}" stroke="#003D4F" stroke-width="1.5"/>')
+
+    cx = ml + pw // 2
+    parts.append(
+        f'<text x="{cx}" y="{H-7}" text-anchor="middle" font-size="12" fill="#003D4F" font-weight="600">'
+        f'Message Sequence (send order)</text>'
+    )
+    ry = mt + ph // 2
+    parts.append(
+        f'<text x="13" y="{ry}" text-anchor="middle" dominant-baseline="middle" '
+        f'font-size="12" fill="#003D4F" font-weight="600" transform="rotate(-90,13,{ry})">'
+        f'Latency (s)</text>'
+    )
+
+    for schema in schemas:
+        colour = colour_map[schema]
+        for msg_set, file_name, seq, lat in rows:
+            if msg_set != schema:
+                continue
+            xp, yp = sx(seq), sy(lat)
+            parts.append(
+                f'<circle cx="{xp:.1f}" cy="{yp:.1f}" r="3.5" '
+                f'fill="{colour}" fill-opacity="0.72" stroke="{colour}" stroke-width="0.4">'
+                f'<title>pain.{html.escape(msg_set)} | {html.escape(file_name)} | {lat}s</title>'
+                f'</circle>'
+            )
+
+    lx = W - mr + 14
+    for i, schema in enumerate(schemas):
+        colour = colour_map[schema]
+        ly = mt + i * 26
+        parts.append(f'<circle cx="{lx+6}" cy="{ly+9}" r="5.5" fill="{colour}" fill-opacity="0.85"/>')
+        parts.append(
+            f'<text x="{lx+18}" y="{ly+9}" dominant-baseline="middle" font-size="12" fill="#333">'
+            f'pain.{html.escape(schema)}</text>'
+        )
+
+    parts.append('</svg>')
+    return "\n".join(parts)
+
+
+def _latency_scatter_html(rows: list[tuple]) -> str:
+    return f"""
+    <section>
+      <h2>Analytics — Latency Scatter Plot {_DUCKDB_BADGE}</h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:1.2rem;">
+        Each point is one message. X-axis: send-order sequence (1–{len(rows)}).
+        Y-axis: end-to-end latency in seconds. Colour: ISO 20022 message set.
+        Hover a point to see file name and exact latency.
+        Messages within the same schema cluster together on the x-axis (sent in rapid succession);
+        the slight left-to-right decline reflects the sender's publish window — later schemas
+        entered Kafka closer to the receiver's burst window.
+      </p>
+      {_build_scatter_svg(rows)}
+    </section>"""
+
+
+def _latency_html(rows: list[tuple], timeline: tuple | None) -> str:
+    phases_html = _pipeline_phases_html(timeline) if timeline else ""
+    return f"""
+    <section>
+      <h2>Analytics — Message Processing Latency {_DUCKDB_BADGE}</h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">
+        End-to-end latency from <code>sent_at</code> to <code>processed_at</code> per message.
+        The pipeline has three distinct phases: sender publish, consumer group startup, and receiver burst.
+        The <em>Receiver burst span</em> bar shows actual processing time per schema within the burst window.
+      </p>
+      {phases_html}
+      <table>
+        <thead>
+          <tr>
+            <th>Message Set</th>
+            <th style="text-align:center">Count</th>
+            <th style="text-align:center">Min (s)</th>
+            <th style="text-align:center">Avg (s)</th>
+            <th style="text-align:center">p95 (s)</th>
+            <th style="text-align:center">Max (s)</th>
+            <th style="min-width:180px;">Receiver Burst Span</th>
+          </tr>
+        </thead>
+        <tbody>
+          {_build_latency_rows(rows)}
+        </tbody>
+      </table>
+    </section>"""
+
+
 def _analytics_html(analytics: AnalyticsResult | None) -> str:
     if analytics is None:
         return ""
@@ -458,6 +721,8 @@ def _analytics_html(analytics: AnalyticsResult | None) -> str:
         + _error_patterns_html(analytics.error_patterns)
         + _category_outcomes_html(analytics.category_outcomes)
         + _tampered_by_set_html(analytics.tampered_by_set)
+        + _latency_html(analytics.latency_by_schema, analytics.pipeline_timeline)
+        + _latency_scatter_html(analytics.latency_scatter)
     )
 
 
@@ -679,6 +944,9 @@ def main() -> None:
         print(f"  Schema breakdown  : {len(analytics.schema_breakdown)} message sets")
         print(f"  Error patterns    : {len(analytics.error_patterns)} categories")
         print(f"  Category outcomes : {len(analytics.category_outcomes)} rows")
+        if analytics.pipeline_timeline:
+            sender_sec, wait_sec, receiver_sec, _, throughput = analytics.pipeline_timeline
+            print(f"  Pipeline latency  : sender {sender_sec}s | wait {wait_sec}s | receiver {receiver_sec}s | {int(throughput):,} msg/s")
 
     report_path = generate_report(sent, processed, duplicates, tampered, analytics)
     print(f"\nReport   : {report_path}")
