@@ -8,6 +8,7 @@ Tools for validating, generating, and streaming **ISO 20022 pain** (Payments Ini
 |---|---|
 | [Architecture](docs/architecture.html) | System design, data flows, component breakdown, design decisions |
 | [Executive Report](docs/executive-report.html) | Business value, effort reduction, and ROI narrative |
+| [Executive Summary](docs/executive-summary.md) | Comprehensive project summary — pipeline results, security posture, and artefact inventory |
 | [OWASP LLM Security Assessment](docs/owasp-llm-security-report.html) | Full security assessment against OWASP LLM Top 10 (2025) |
 
 ## Repository Contents
