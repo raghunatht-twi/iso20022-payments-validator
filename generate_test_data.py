@@ -380,9 +380,10 @@ def _generate_for_schema(client: anthropic.Anthropic, schema_path: Path, model: 
 
 def _save_cases(cases: list[GeneratedCase], output_dir: Path) -> None:
     counters: dict[str, int] = {"pass": 1, "fail": 1, "edge": 1}
+    date_stamp = datetime.now().strftime("%m%d%Y")
     for case in cases:
         cat = case.actual_category
-        filename = f"gen-{cat}-{counters[cat]:03d}.xml"
+        filename = f"gen-{cat}-{counters[cat]:03d}-{date_stamp}.xml"
         case.file_path = output_dir / filename
         case.file_path.write_text(case.xml, encoding="utf-8")
         counters[cat] += 1
