@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ISO 20022: From Compliance to Competitive Advantage — Thoughtworks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.0/reveal.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.0/theme/white.min.css"/>
+  <style>
+    :root {
+      --white:   #FFFFFF;
+      --mist:    #EDF1F3;
+      --black:   #000000;
+      --teal-dk: #003D4F;
+      --coral:   #F2617A;
+      --amber:   #CC850A;
+      --green:   #689E78;
+      --teal:    #47A1AD;
+      --plum:    #634F7D;
+    }
+
+    .reveal {
+      font-family: 'Inter', sans-serif;
+      font-size: 18px;
+      color: var(--black);
+    }
+
+    .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+      font-family: 'Bitter', serif;
+      text-transform: none;
+      letter-spacing: -0.01em;
+      color: var(--teal-dk);
+      margin-bottom: 0.6em;
+    }
+
+    .reveal .slides section {
+      text-align: left;
+      padding: 0;
+    }
+
+    /* ── Slide shell ── */
+    .slide-inner {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 0;
+    }
+
+    .slide-header {
+      background: var(--teal-dk);
+      color: var(--white);
+      padding: 1.4rem 2.4rem 1.1rem;
+      flex-shrink: 0;
+    }
+
+    .slide-header .eyebrow {
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      opacity: 0.65;
+      margin-bottom: 0.25rem;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+    }
+
+    .slide-header h2 {
+      font-family: 'Bitter', serif;
+      color: var(--white);
+      font-size: 1.55rem;
+      font-weight: 700;
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    .slide-body {
+      flex: 1;
+      padding: 1.4rem 2.4rem 1.2rem;
+      background: var(--white);
+      overflow: hidden;
+    }
+
+    .slide-body.mist-bg {
+      background: var(--mist);
+    }
+
+    /* ── Title slide ── */
+    .title-slide {
+      background: var(--teal-dk) !important;
+      display: flex !important;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 3rem 3.5rem !important;
+      height: 100%;
+    }
+
+    .title-slide .pretitle {
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--teal);
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+
+    .title-slide h1 {
+      font-family: 'Bitter', serif;
+      color: var(--white);
+      font-size: 2.5rem;
+      font-weight: 700;
+      line-height: 1.15;
+      max-width: 680px;
+      margin-bottom: 0.5rem;
+    }
+
+    .title-slide .subtitle {
+      color: var(--teal);
+      font-size: 1.1rem;
+      font-weight: 500;
+      margin-bottom: 2rem;
+      max-width: 600px;
+    }
+
+    .title-slide .meta {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.78rem;
+      display: flex;
+      gap: 2rem;
+    }
+
+    .title-slide .coral-bar {
+      width: 64px;
+      height: 5px;
+      background: var(--coral);
+      border-radius: 2px;
+      margin-bottom: 1.6rem;
+    }
+
+    /* ── Section divider ── */
+    .section-slide {
+      background: var(--mist) !important;
+      display: flex !important;
+      flex-direction: column;
+      justify-content: center;
+      padding: 2.5rem 3rem !important;
+      height: 100%;
+    }
+
+    .section-slide .section-num {
+      font-size: 4rem;
+      font-weight: 700;
+      color: var(--coral);
+      font-family: 'Bitter', serif;
+      line-height: 1;
+      opacity: 0.25;
+      margin-bottom: 0.4rem;
+    }
+
+    .section-slide h2 {
+      font-size: 2.2rem;
+      color: var(--teal-dk);
+      margin-bottom: 0.5rem;
+    }
+
+    .section-slide .section-desc {
+      color: #5a6a73;
+      font-size: 0.95rem;
+      max-width: 480px;
+    }
+
+    /* ── Typography ── */
+    .reveal ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .reveal ul li {
+      padding: 0.32rem 0 0.32rem 1.2rem;
+      position: relative;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: #1a2a32;
+    }
+
+    .reveal ul li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0.72rem;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--teal);
+      flex-shrink: 0;
+    }
+
+    .reveal ul li.coral::before  { background: var(--coral); }
+    .reveal ul li.amber::before  { background: var(--amber); }
+    .reveal ul li.green::before  { background: var(--green); }
+    .reveal ul li.plum::before   { background: var(--plum); }
+
+    .reveal ul li strong {
+      color: var(--teal-dk);
+    }
+
+    /* ── Stat cards ── */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.9rem;
+      margin: 0.8rem 0;
+    }
+
+    .stat-card {
+      background: var(--mist);
+      border-left: 4px solid var(--teal);
+      padding: 0.9rem 1rem;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .stat-card.coral { border-color: var(--coral); }
+    .stat-card.amber { border-color: var(--amber); }
+    .stat-card.green { border-color: var(--green); }
+    .stat-card.plum  { border-color: var(--plum); }
+
+    .stat-card .stat-num {
+      font-family: 'Bitter', serif;
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: var(--teal-dk);
+      line-height: 1;
+    }
+
+    .stat-card.coral .stat-num { color: var(--coral); }
+    .stat-card.amber .stat-num { color: var(--amber); }
+    .stat-card.green .stat-num { color: var(--green); }
+    .stat-card.plum  .stat-num { color: var(--plum); }
+
+    .stat-card .stat-label {
+      font-size: 0.72rem;
+      color: #5a6a73;
+      margin-top: 0.2rem;
+      line-height: 1.3;
+    }
+
+    /* ── Two-column layout ── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+    }
+
+    .two-col.wide-left {
+      grid-template-columns: 3fr 2fr;
+    }
+
+    /* ── Cards / panels ── */
+    .panel {
+      background: var(--mist);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+    }
+
+    .panel h4 {
+      font-size: 0.82rem;
+      color: var(--teal-dk);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .panel.teal-border  { border-top: 3px solid var(--teal); }
+    .panel.coral-border { border-top: 3px solid var(--coral); }
+    .panel.amber-border { border-top: 3px solid var(--amber); }
+    .panel.green-border { border-top: 3px solid var(--green); }
+    .panel.plum-border  { border-top: 3px solid var(--plum); }
+
+    /* ── Table ── */
+    .reveal table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    .reveal table th {
+      background: var(--teal-dk);
+      color: var(--white);
+      padding: 0.5rem 0.8rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .reveal table td {
+      padding: 0.48rem 0.8rem;
+      border-bottom: 1px solid #dde4e8;
+      vertical-align: top;
+      line-height: 1.4;
+    }
+
+    .reveal table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .reveal table tr:nth-child(even) td {
+      background: var(--mist);
+    }
+
+    /* ── Timeline ── */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+    }
+
+    .timeline-item {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      padding: 0.55rem 0;
+    }
+
+    .tl-date {
+      font-family: 'Bitter', serif;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--white);
+      background: var(--teal-dk);
+      padding: 0.22rem 0.55rem;
+      border-radius: 4px;
+      white-space: nowrap;
+      min-width: 106px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .tl-date.coral  { background: var(--coral); }
+    .tl-date.amber  { background: var(--amber); }
+    .tl-date.teal   { background: var(--teal); }
+    .tl-date.green  { background: var(--green); }
+
+    .tl-text {
+      font-size: 0.85rem;
+      line-height: 1.45;
+      color: #1a2a32;
+      padding-top: 0.15rem;
+    }
+
+    .tl-text strong {
+      color: var(--teal-dk);
+      display: block;
+    }
+
+    /* ── Callout ── */
+    .callout {
+      background: var(--teal-dk);
+      color: var(--white);
+      border-radius: 8px;
+      padding: 0.85rem 1.1rem;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      margin: 0.8rem 0;
+    }
+
+    .callout.coral  { background: var(--coral); }
+    .callout.amber  { background: rgba(204,133,10,0.12); color: #7a4f00; border-left: 4px solid var(--amber); border-radius: 0 6px 6px 0; }
+    .callout.mist   { background: var(--mist); color: var(--teal-dk); border-left: 4px solid var(--teal); border-radius: 0 6px 6px 0; }
+
+    .callout strong { color: inherit; font-weight: 700; }
+
+    /* ── Practice grid ── */
+    .practice-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.7rem;
+    }
+
+    .practice-card {
+      background: var(--mist);
+      border-radius: 8px;
+      padding: 0.9rem 0.8rem;
+      text-align: center;
+    }
+
+    .practice-card .icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.4rem;
+      display: block;
+    }
+
+    .practice-card h4 {
+      font-size: 0.72rem;
+      color: var(--teal-dk);
+      margin-bottom: 0.3rem;
+      text-transform: none;
+      letter-spacing: 0;
+      line-height: 1.3;
+    }
+
+    .practice-card p {
+      font-size: 0.65rem;
+      color: #5a6a73;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .practice-card .urgency {
+      display: inline-block;
+      margin-top: 0.4rem;
+      font-size: 0.6rem;
+      font-weight: 600;
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+    }
+
+    .urgency.high   { background: rgba(242,97,122,0.15); color: var(--coral); }
+    .urgency.medium { background: rgba(204,133,10,0.15); color: var(--amber); }
+    .urgency.evergreen { background: rgba(71,161,173,0.15); color: var(--teal); }
+
+    /* ── Next steps ── */
+    .next-steps {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 0.6rem;
+    }
+
+    .step-card {
+      background: var(--mist);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+      border-left: 4px solid var(--teal);
+    }
+
+    .step-card.coral { border-color: var(--coral); }
+    .step-card.green { border-color: var(--green); }
+
+    .step-card .step-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 0.3rem;
+    }
+
+    .step-card.coral .step-label { color: var(--coral); }
+    .step-card.green .step-label { color: var(--green); }
+
+    .step-card h4 {
+      font-size: 0.95rem;
+      color: var(--teal-dk);
+      margin-bottom: 0.4rem;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .step-card p {
+      font-size: 0.78rem;
+      color: #3a4a52;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    /* ── Appendix ── */
+    .appendix-badge {
+      display: inline-block;
+      background: var(--plum);
+      color: var(--white);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      margin-bottom: 0.6rem;
+    }
+
+    /* ── Progress bar ── */
+    .reveal .progress {
+      color: var(--coral);
+    }
+
+    /* ── Slide number ── */
+    .reveal .slide-number {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.7rem;
+      color: #8a9aa2;
+      background: transparent;
+    }
+
+    /* ── Before/after ── */
+    .before-after {
+      display: grid;
+      grid-template-columns: 1fr 32px 1fr;
+      gap: 0;
+      align-items: center;
+    }
+
+    .ba-col {
+      background: var(--mist);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+    }
+
+    .ba-col.after {
+      background: rgba(104, 158, 120, 0.1);
+      border: 1px solid rgba(104,158,120,0.3);
+    }
+
+    .ba-col h4 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+
+    .ba-col.after h4 { color: var(--green); }
+
+    .ba-arrow {
+      text-align: center;
+      font-size: 1.2rem;
+      color: var(--teal);
+    }
+
+    /* ── Small text utility ── */
+    .small { font-size: 0.72rem; color: #5a6a73; }
+    .mt-sm { margin-top: 0.5rem; }
+    .mt-md { margin-top: 0.9rem; }
+    .tag {
+      display: inline-block;
+      font-size: 0.62rem;
+      font-weight: 600;
+      padding: 0.12rem 0.45rem;
+      border-radius: 3px;
+      margin-right: 0.25rem;
+    }
+    .tag.coral  { background: rgba(242,97,122,0.15); color: var(--coral); }
+    .tag.amber  { background: rgba(204,133,10,0.15); color: #7a5200; }
+    .tag.green  { background: rgba(104,158,120,0.15); color: #3a6e4a; }
+    .tag.teal   { background: rgba(71,161,173,0.15); color: #2a6e7a; }
+
+    /* Fragmentation visual */
+    .network-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.6rem;
+      margin-top: 0.8rem;
+    }
+
+    .network-card {
+      background: var(--mist);
+      border-radius: 6px;
+      padding: 0.7rem 0.6rem;
+      text-align: center;
+    }
+
+    .network-card .net-name {
+      font-family: 'Bitter', serif;
+      font-weight: 700;
+      font-size: 0.82rem;
+      color: var(--teal-dk);
+    }
+
+    .network-card .net-date {
+      font-size: 0.65rem;
+      color: var(--coral);
+      font-weight: 600;
+      margin: 0.2rem 0;
+    }
+
+    .network-card .net-note {
+      font-size: 0.62rem;
+      color: #5a6a73;
+      line-height: 1.35;
+    }
+  </style>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 1 — TITLE
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="title-slide">
+        <div class="pretitle">Thoughtworks · Payments Practice · 2026</div>
+        <div class="coral-bar"></div>
+        <h1>ISO 20022: From Compliance Obligation to Competitive Advantage</h1>
+        <div class="subtitle">How banks can turn the most disruptive messaging migration in 20 years into a lasting strategic asset</div>
+        <div class="meta">
+          <span>Confidential — Client Discussion</span>
+          <span>June 2026</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION DIVIDER — SETTING THE SCENE
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="section-slide">
+        <div class="section-num">01</div>
+        <h2>Setting the Scene</h2>
+        <div class="section-desc">The MT era is over. What that means for banks right now — and what comes next.</div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 2 — THE MOMENT WE'RE IN
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Setting the Scene</div>
+          <h2>The Moment We're In</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <div class="timeline">
+                <div class="timeline-item">
+                  <div class="tl-date teal">Apr 2024</div>
+                  <div class="tl-text"><strong>CHIPS completes migration</strong>The first major US clearing house goes fully ISO 20022 native</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="tl-date teal">Jul 2025</div>
+                  <div class="tl-text"><strong>Fedwire Funds goes live</strong>Fed's real-time gross settlement system switches to MX</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="tl-date coral">Nov 2025</div>
+                  <div class="tl-text"><strong>SWIFT MT coexistence ends</strong>MT messages for cross-border payments no longer accepted — no further extensions granted</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="tl-date amber">Nov 2026</div>
+                  <div class="tl-text"><strong>Structured address mandate</strong>CBPR+ requires fully structured postal addresses — unstructured data rejected</div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="stat-card coral">
+                <div class="stat-num">~67%</div>
+                <div class="stat-label">of SWIFT members still not fully ISO-native as of early 2025</div>
+              </div>
+              <div class="stat-card amber">
+                <div class="stat-num">17 mo</div>
+                <div class="stat-label">until the November 2026 structured address deadline — the next cliff edge</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-num">3</div>
+                <div class="stat-label">major network cutovers in 18 months — same specialist pool, back-to-back</div>
+              </div>
+            </div>
+          </div>
+          <div class="callout mist mt-md">
+            The SWIFT Board confirmed no extension in 2024. Banks still using the translation tool post-November 2025 now incur <strong>ongoing penalty fees</strong>.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 3 — TWO TYPES OF BANKS
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Setting the Scene</div>
+          <h2>Two Types of Banks Right Now</h2>
+        </div>
+        <div class="slide-body">
+          <div class="before-after" style="margin-top:0.3rem;">
+            <div class="ba-col">
+              <h4 style="color:var(--coral);">Tactical Compliance</h4>
+              <ul>
+                <li class="coral">Deployed a translation layer (MT↔MX) to meet deadlines</li>
+                <li class="coral">Now paying ongoing SWIFT penalty fees</li>
+                <li class="coral">Facing a <strong>second migration</strong> with depleted budgets and fatigued teams</li>
+                <li class="coral">Downstream systems still receiving truncated, unstructured data</li>
+                <li class="coral">November 2026 structured address mandate: not started</li>
+              </ul>
+            </div>
+            <div class="ba-arrow">→</div>
+            <div class="ba-col after">
+              <h4>ISO-Native</h4>
+              <ul>
+                <li class="green">MX end-to-end — no translation shim at any hop</li>
+                <li class="green">Structured, enriched data flowing into AML, fraud, and reporting</li>
+                <li class="green">25–30% reduction in sanctions screening false positives</li>
+                <li class="green">Ready for November 2026 — structured addresses already governed</li>
+                <li class="green">Platform for new products: real-time, embedded finance, open banking</li>
+              </ul>
+            </div>
+          </div>
+          <div class="callout mist mt-md">
+            The question isn't <em>whether</em> to migrate — it's <strong>how much technical debt did you take on doing it</strong>. Most banks are in the left column.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION DIVIDER — WHY IT'S HARD
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="section-slide">
+        <div class="section-num">02</div>
+        <h2>Why It's Hard</h2>
+        <div class="section-desc">Five structural challenges that explain why most migrations stall, overrun, or deliver less than promised.</div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 4 — THE LEGACY TRAP
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Why It's Hard · Challenge 1 of 5</div>
+          <h2>The Legacy Trap</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <ul>
+                <li><strong>Architectural mismatch at the core</strong> — Core banking systems built for fixed-length MT fields cannot natively parse hierarchical XML/MX structures. The data models are fundamentally different.</li>
+                <li class="mt-sm"><strong>The translation layer shortcut</strong> — Most banks chose MT↔MX coexistence to meet the deadline. This deferred the real work and has now created a second, harder migration.</li>
+                <li class="mt-sm"><strong>Two-thirds of banks</strong> acknowledge the cost of keeping legacy infrastructure, yet most remain entangled in it (EY / Fulcrum Digital).</li>
+                <li class="mt-sm"><strong>Budget depletion</strong> — Teams that spent years on Phase 1 compliance now face Phase 2 (native migration) with smaller budgets and lower executive appetite for another payments overhaul.</li>
+              </ul>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="panel coral-border">
+                <h4>MT Message</h4>
+                <p style="font-size:0.72rem;font-family:monospace;color:#3a4a52;line-height:1.6;">
+                  :57A:BARCGB22<br/>
+                  :59:/GB12BARC…<br/>
+                  <span style="color:var(--coral);">John Smith 14 High St London</span><br/>
+                  :70:/INV/20240112
+                </p>
+                <p class="small mt-sm">Free-text blob — address, name, account in one unstructured field</p>
+              </div>
+              <div class="panel green-border">
+                <h4>MX Message (ISO 20022)</h4>
+                <p style="font-size:0.72rem;font-family:monospace;color:#3a4a52;line-height:1.6;">
+                  &lt;Nm&gt;<span style="color:var(--green);">John Smith</span>&lt;/Nm&gt;<br/>
+                  &lt;StrtNm&gt;<span style="color:var(--green);">High Street</span>&lt;/StrtNm&gt;<br/>
+                  &lt;BldgNb&gt;<span style="color:var(--green);">14</span>&lt;/BldgNb&gt;<br/>
+                  &lt;TwnNm&gt;<span style="color:var(--green);">London</span>&lt;/TwnNm&gt;
+                </p>
+                <p class="small mt-sm">Structured, validated, machine-readable — each field governed</p>
+              </div>
+            </div>
+          </div>
+          <div class="stat-card coral mt-md" style="max-width:340px;">
+            <div class="stat-num">~$100B</div>
+            <div class="stat-label">spent by European banks on ISO 20022 preparation — much of it on tactical workarounds (Celent 2023)</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 5 — THE DATA PROBLEM
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Why It's Hard · Challenge 2 of 5</div>
+          <h2>The Data Problem Nobody Budgeted For</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <ul>
+                <li><strong>ISO 20022 demands structured data banks don't hold</strong> — LEIs, fully structured postal addresses, purpose codes, BICs in correct format. Legacy customer databases store this as free-text blobs.</li>
+                <li class="mt-sm"><strong>November 2026 structured address mandate (CBPR+)</strong> — Unstructured addresses will be rejected by the network. Banks must remediate customer and beneficiary address data field-by-field at scale.</li>
+                <li class="mt-sm"><strong>Counterparty data is even harder</strong> — A bank cannot fix its correspondent's data. Mismatched LEIs and truncated addresses from upstream banks break STP downstream.</li>
+                <li class="mt-sm"><strong>Discovered late, always</strong> — Data quality issues consistently surface during testing, causing timeline collapse. Not scoped as a first-class workstream in most programmes.</li>
+              </ul>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="stat-card amber">
+                <div class="stat-num">Nov 2026</div>
+                <div class="stat-label">CBPR+ structured address deadline — 17 months away, most banks have not started</div>
+              </div>
+              <div class="panel amber-border">
+                <h4>What needs to be structured</h4>
+                <ul style="margin-top:0.3rem;">
+                  <li>Customer postal addresses → street, building, town, postcode, country</li>
+                  <li>Beneficiary addresses (millions of records)</li>
+                  <li>Legal Entity Identifiers (LEIs) — validated and current</li>
+                  <li>Purpose codes for transaction categorisation</li>
+                  <li>Financial institution BICs in correct 8/11-char format</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="callout amber mt-md">
+            <strong>This is the next cliff edge.</strong> Banks that resolved Phase 1 (message format) still face a major data engineering programme before November 2026.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 6 — TESTING BOTTLENECK
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Why It's Hard · Challenge 3 of 5</div>
+          <h2>Testing: The Hidden Bottleneck</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col wide-left">
+            <div>
+              <ul>
+                <li><strong>Testing scope is uniquely broad</strong> — End-to-end validation must cover internal systems, correspondent banks, clearing houses, and corporate clients simultaneously. No single team controls all endpoints.</li>
+                <li class="mt-sm"><strong>Banks exhaust testing windows</strong> — Dedicated test environments compete with BAU releases. The most commonly cited cause of schedule slippage in bank migrations.</li>
+                <li class="mt-sm"><strong>Each network has its own implementation guide</strong> — CBPR+, Fedwire, CHIPS, SEPA, CHAPS each publish separate field usage rules. A message valid for one network fails on another.</li>
+                <li class="mt-sm"><strong>Counterparty readiness gaps undermine STP</strong> — Even a fully native sender cannot achieve straight-through processing if correspondent banks send truncated or unstructured data.</li>
+                <li class="mt-sm"><strong>Manual test data creation</strong> — Generating valid, realistic XML messages at scale for all message variants (pass, fail, edge case) is time-consuming and error-prone when done by hand.</li>
+              </ul>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="stat-card coral">
+                <div class="stat-num">#1</div>
+                <div class="stat-label">Testing cited as the top reported bottleneck in ISO 20022 migration programmes</div>
+              </div>
+              <div class="panel teal-border">
+                <h4>What good testing looks like</h4>
+                <ul style="margin-top:0.2rem;">
+                  <li>XSD schema validation in CI/CD pipeline</li>
+                  <li>AI-generated synthetic test fixtures at scale</li>
+                  <li>Pass / fail / edge case distribution automated</li>
+                  <li>End-to-end Kafka message flow validation</li>
+                  <li>Signature verification & tamper detection tests</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 7 — FRAGMENTATION
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Why It's Hard · Challenge 4 of 5</div>
+          <h2>The Fragmentation Problem</h2>
+        </div>
+        <div class="slide-body">
+          <p style="font-size:0.88rem;color:#3a4a52;margin-bottom:0.8rem;">ISO 20022 is a <strong>framework</strong>, not a single specification. Each network publishes its own implementation guide — and the variations matter.</p>
+          <div class="network-grid">
+            <div class="network-card">
+              <div class="net-name">CHIPS</div>
+              <div class="net-date">Apr 2024 ✓</div>
+              <div class="net-note">US dollar clearing — first major cutover</div>
+            </div>
+            <div class="network-card">
+              <div class="net-name">Fedwire</div>
+              <div class="net-date">Jul 2025 ✓</div>
+              <div class="net-note">Fed RTGS — pacs.008 / pacs.009 variants</div>
+            </div>
+            <div class="network-card" style="background:rgba(242,97,122,0.08);border:1px solid rgba(242,97,122,0.2);">
+              <div class="net-name">SWIFT CBPR+</div>
+              <div class="net-date" style="color:var(--coral);">Nov 2025 ✓</div>
+              <div class="net-note">Cross-border — MT coexistence ended, penalties now live</div>
+            </div>
+            <div class="network-card" style="background:rgba(204,133,10,0.08);border:1px solid rgba(204,133,10,0.2);">
+              <div class="net-name">SEPA / TARGET2</div>
+              <div class="net-date" style="color:var(--amber);">Ongoing</div>
+              <div class="net-note">ECB mandate — European scope, separate UDFS</div>
+            </div>
+            <div class="network-card">
+              <div class="net-name">CHAPS</div>
+              <div class="net-date">2023 ✓</div>
+              <div class="net-note">UK RTGS — Bank of England, own field rules</div>
+            </div>
+          </div>
+          <div class="two-col mt-md">
+            <ul>
+              <li><strong>Same specialist pool, five consecutive deadlines</strong> — resource exhaustion is structural, not a planning failure</li>
+              <li class="mt-sm"><strong>Field usage varies by network</strong> — optional in CBPR+, mandatory in Fedwire; same field, different rule</li>
+            </ul>
+            <ul>
+              <li><strong>Interoperability promise is theoretical</strong> — variability in implementation means cross-network STP still requires mapping layers</li>
+              <li class="mt-sm"><strong>BIS CPMI flagged this in 2024</strong> — lack of harmonised implementation guides is the biggest systemic risk to the standard's goals</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 8 — ROI GAP
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Why It's Hard · Challenge 5 of 5</div>
+          <h2>The ROI Gap</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <ul>
+                <li><strong>Benefits are long-term and diffuse</strong> — ROI only materialises at scale and only after <em>full native adoption</em>. A translation shim is compliant but captures none of the value.</li>
+                <li class="mt-sm"><strong>The payoff is real — but delayed</strong> — Banks that went native are seeing measurable gains. The problem is the investment peaked years before the return.</li>
+                <li class="mt-sm"><strong>Financial crime compliance is the biggest lever</strong> — Costs exceeded $1 trillion globally in 2024. ISO 20022's structured data directly reduces false positives and investigation cost.</li>
+                <li class="mt-sm"><strong>Most banks can't yet connect the investment to the return</strong> — KPIs are defined around compliance milestones, not business outcomes. The CFO case is underdeveloped.</li>
+              </ul>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="stat-card green">
+                <div class="stat-num">25–30%</div>
+                <div class="stat-label">reduction in sanctions screening false positives for banks with full native MX data flowing into AML systems (NICE Actimize)</div>
+              </div>
+              <div class="stat-card amber">
+                <div class="stat-num">$1T+</div>
+                <div class="stat-label">global financial crime compliance spend in 2024 — ISO 20022's richer data is the lever to reduce this</div>
+              </div>
+              <div class="stat-card plum">
+                <div class="stat-num">2nd</div>
+                <div class="stat-label">migration project now facing banks that took the tactical translation route — depleted budgets, depleted teams</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION DIVIDER — WHAT GOOD LOOKS LIKE
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="section-slide">
+        <div class="section-num">03</div>
+        <h2>What Good Looks Like</h2>
+        <div class="section-desc">ISO-native isn't a message format — it's a data strategy. Here's the target state and what it unlocks.</div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 9 — ISO-NATIVE DEFINITION
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">What Good Looks Like</div>
+          <h2>What ISO-Native Actually Means</h2>
+        </div>
+        <div class="slide-body">
+          <p style="font-size:0.88rem;color:#3a4a52;margin-bottom:0.9rem;">Compliance means your messages are in MX format. <strong>ISO-native</strong> means structured data flows end-to-end, without translation at any internal hop.</p>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.7rem;">
+            <div class="panel teal-border">
+              <h4>Message Format</h4>
+              <p style="font-size:0.78rem;color:#3a4a52;line-height:1.5;">XML/MX natively produced and consumed — no MT↔MX translation shim at any point in the chain</p>
+            </div>
+            <div class="panel coral-border">
+              <h4>Structured Data</h4>
+              <p style="font-size:0.78rem;color:#3a4a52;line-height:1.5;">Enriched, validated fields throughout — names, addresses, LEIs, purpose codes — not free-text blobs</p>
+            </div>
+            <div class="panel green-border">
+              <h4>Governed Data Models</h4>
+              <p style="font-size:0.78rem;color:#3a4a52;line-height:1.5;">Data quality rules enforced at source, not patched at the network boundary before transmission</p>
+            </div>
+            <div class="panel plum-border">
+              <h4>Native Downstream</h4>
+              <p style="font-size:0.78rem;color:#3a4a52;line-height:1.5;">AML, fraud, liquidity, and regulatory reporting systems consuming MX data directly — no enrichment pipeline</p>
+            </div>
+          </div>
+          <div class="callout mist mt-md">
+            Most banks that "completed" migration are compliant on the first dimension only. The other three are where the value — and the November 2026 mandate — sit.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 10 — COMPOUNDING RETURNS
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">What Good Looks Like</div>
+          <h2>The Compounding Returns of ISO-Native</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <div style="margin-bottom:0.9rem;">
+                <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);margin-bottom:0.4rem;">Financial Crime &amp; Compliance</div>
+                <ul>
+                  <li class="green">25–30% reduction in sanctions screening false positives</li>
+                  <li class="green">Faster AML investigations — structured data reduces manual enrichment</li>
+                  <li class="green">Regulatory reporting without manual field mapping</li>
+                </ul>
+              </div>
+              <div style="margin-bottom:0.9rem;">
+                <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);margin-bottom:0.4rem;">Operational Efficiency</div>
+                <ul>
+                  <li class="green">Higher STP rates → faster settlement, lower ops cost</li>
+                  <li class="green">Fewer payment exceptions and repair queues</li>
+                  <li class="green">Reduced correspondent bank friction</li>
+                </ul>
+              </div>
+              <div>
+                <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);margin-bottom:0.4rem;">New Revenue &amp; Products</div>
+                <ul>
+                  <li class="green">Foundation for real-time payments and instant settlement</li>
+                  <li class="green">Richer remittance data enables new trade finance products</li>
+                  <li class="green">Open banking and embedded finance integrations</li>
+                </ul>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="callout" style="background:var(--green);flex:1;">
+                <div style="font-size:1.5rem;font-family:'Bitter',serif;font-weight:700;margin-bottom:0.3rem;">Before</div>
+                <p style="font-size:0.78rem;line-height:1.5;">Truncated MT data flows into AML → high false positive rate → large manual review team → slow investigations → high compliance cost</p>
+              </div>
+              <div style="text-align:center;font-size:1.2rem;color:var(--teal);">↓</div>
+              <div class="callout" style="background:var(--teal-dk);flex:1;">
+                <div style="font-size:1.5rem;font-family:'Bitter',serif;font-weight:700;margin-bottom:0.3rem;">After</div>
+                <p style="font-size:0.78rem;line-height:1.5;">Structured MX data with LEIs, addresses, purpose codes flows directly into AML models → 25–30% fewer false positives → smaller review team → faster resolution → lower cost per transaction</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION DIVIDER — HOW THOUGHTWORKS HELPS
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="section-slide">
+        <div class="section-num">04</div>
+        <h2>How Thoughtworks Helps</h2>
+        <div class="section-desc">Five practice areas. Engineering-led, not advisory-led. We build alongside your team.</div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 11 — FIVE PRACTICE AREAS
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">How Thoughtworks Helps</div>
+          <h2>Our Five Practice Areas</h2>
+        </div>
+        <div class="slide-body">
+          <div class="practice-grid">
+            <div class="practice-card">
+              <span class="icon">🏗️</span>
+              <h4>ISO-Native Architecture</h4>
+              <p>Target state design and payment hub blueprint that survives the next decade</p>
+              <span class="urgency evergreen">Evergreen</span>
+            </div>
+            <div class="practice-card">
+              <span class="icon">🗂️</span>
+              <h4>Data Remediation</h4>
+              <p>Structured address and LEI cleansing at scale — November 2026 delivery</p>
+              <span class="urgency high">Nov 2026 deadline</span>
+            </div>
+            <div class="practice-card">
+              <span class="icon">🧪</span>
+              <h4>Test Automation</h4>
+              <p>XSD pipelines, AI-generated synthetic test data, CI/CD for payment messages</p>
+              <span class="urgency high">Active bottleneck</span>
+            </div>
+            <div class="practice-card">
+              <span class="icon">🔍</span>
+              <h4>AML Model Uplift</h4>
+              <p>Re-calibrate fraud and sanctions models to exploit ISO 20022 structured data</p>
+              <span class="urgency medium">Immediate ROI</span>
+            </div>
+            <div class="practice-card">
+              <span class="icon">🚀</span>
+              <h4>Fast-Track Programme</h4>
+              <p>Repeatable assessment → architecture → data → testing → go-live for mid-tier banks</p>
+              <span class="urgency high">Penalty relief</span>
+            </div>
+          </div>
+          <div class="two-col mt-md">
+            <div class="callout mist">
+              <strong>Not advisory-only.</strong> Thoughtworks embeds engineering teams alongside yours. We deliver working software, not recommendations decks.
+            </div>
+            <div class="callout mist">
+              <strong>The underserved gap.</strong> Between pure-play middleware vendors (too narrow) and Big 4 consulting (too expensive, too advisory). That's where we work.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 12 — ISO-NATIVE ARCHITECTURE
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Practice Area 1</div>
+          <h2>ISO-Native Architecture Design</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <ul>
+                <li><strong>Payment hub blueprint</strong> — cloud-native, network-agnostic architecture that handles SWIFT CBPR+, Fedwire, SEPA, and RTP without rebuilding for each</li>
+                <li class="mt-sm"><strong>Translate once at the edge</strong> — a single ingress/egress translation layer; MX everywhere inside. Legacy core banking preserved, not replaced.</li>
+                <li class="mt-sm"><strong>Domain event model</strong> — decouple payment initiation, clearing, settlement, and reporting into independently deployable services</li>
+                <li class="mt-sm"><strong>Data schema governance</strong> — canonical data model aligned to ISO 20022 field hierarchy; no ad-hoc field mapping in application code</li>
+                <li class="mt-sm"><strong>Observability first</strong> — end-to-end message tracing, latency monitoring, and reconciliation proof built in from day one</li>
+              </ul>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="panel teal-border">
+                <h4>What you get</h4>
+                <ul style="margin-top:0.3rem;">
+                  <li>Architecture decision records + rationale</li>
+                  <li>Reference implementation in your stack</li>
+                  <li>Migration sequencing roadmap</li>
+                  <li>Build vs. buy analysis for each component</li>
+                  <li>Risk-ranked backlog ready for delivery</li>
+                </ul>
+              </div>
+              <div class="stat-card">
+                <div class="stat-num">10 yr</div>
+                <div class="stat-label">Design horizon — not just current deadline compliance, but a platform for what comes next</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 13 — DATA REMEDIATION
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Practice Area 2</div>
+          <h2>Structured Address &amp; Data Remediation</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <div class="callout amber" style="margin-bottom:0.8rem;">
+                <strong>November 2026 is 17 months away.</strong> CBPR+ will reject messages with unstructured addresses. Most banks haven't started.
+              </div>
+              <ul>
+                <li><strong>Address parsing at scale</strong> — NLP-based extraction to split free-text blobs into street, building, town, postcode, country fields</li>
+                <li class="mt-sm"><strong>LEI enrichment pipeline</strong> — automated lookup and validation against GLEIF database; exception handling for unregistered entities</li>
+                <li class="mt-sm"><strong>Data quality scoring</strong> — per-record confidence scores with remediation workflows for low-confidence records</li>
+                <li class="mt-sm"><strong>Pre-flight validation</strong> — automated XSD and business-rule validation before messages hit the network, not after rejection</li>
+                <li class="mt-sm"><strong>Governance framework</strong> — data stewardship model, ongoing monitoring, and alerting to prevent re-contamination</li>
+              </ul>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="panel amber-border">
+                <h4>Typical data estate scope</h4>
+                <table style="margin-top:0.4rem;">
+                  <tr><td style="padding:0.25rem 0.5rem 0.25rem 0;border:none;font-size:0.75rem;">Customer addresses</td><td style="border:none;font-size:0.75rem;color:var(--coral);">Millions of records</td></tr>
+                  <tr><td style="padding:0.25rem 0.5rem 0.25rem 0;border:none;font-size:0.75rem;">Beneficiary addresses</td><td style="border:none;font-size:0.75rem;color:var(--coral);">Often worse quality</td></tr>
+                  <tr><td style="padding:0.25rem 0.5rem 0.25rem 0;border:none;font-size:0.75rem;">LEI coverage</td><td style="border:none;font-size:0.75rem;color:var(--amber);">Typically &lt; 40% complete</td></tr>
+                  <tr><td style="padding:0.25rem 0.5rem 0.25rem 0;border:none;font-size:0.75rem;">BIC format compliance</td><td style="border:none;font-size:0.75rem;color:var(--green);">Usually fixable quickly</td></tr>
+                </table>
+              </div>
+              <div class="stat-card amber">
+                <div class="stat-num">Time-boxed</div>
+                <div class="stat-label">Fixed-scope programme with hard November 2026 deliverable — not open-ended consulting</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 14 — TEST AUTOMATION
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Practice Area 3</div>
+          <h2>Test Automation &amp; Synthetic Data</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col wide-left">
+            <div>
+              <ul>
+                <li><strong>AI-generated synthetic XML test fixtures</strong> — Claude-powered agent generates hundreds of valid ISO 20022 messages per schema, distributed across pass / fail / edge case scenarios</li>
+                <li class="mt-sm"><strong>Automated XSD validation in CI/CD</strong> — every message validated against the schema before deployment; broken messages caught in the pipeline, not in production</li>
+                <li class="mt-sm"><strong>Multi-agent Kafka pipeline testing</strong> — end-to-end flow: sign → publish → consume → validate → reconcile. Exactly-once processing verified automatically.</li>
+                <li class="mt-sm"><strong>Ed25519 message integrity</strong> — digital signatures on every message; tamper detection tested as a first-class scenario alongside functional tests</li>
+                <li class="mt-sm"><strong>Reconciliation analytics</strong> — automated DuckDB reporting proves every sent message was processed exactly once, with schema-level breakdown</li>
+              </ul>
+              <div class="callout mist mt-md">
+                <strong>This is working software, not a proposal.</strong> We have a reference implementation covering all 12 pain message sets (001–018) — 784 test fixtures, validated end-to-end.
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="stat-card green">
+                <div class="stat-num">784</div>
+                <div class="stat-label">synthetic XML test fixtures across 12 pain message sets in our reference implementation</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-num">12</div>
+                <div class="stat-label">message sets covered: pain.001, 002, 007–014, 017, 018</div>
+              </div>
+              <div class="stat-card teal" style="border-color:var(--teal);">
+                <div class="stat-num" style="color:var(--teal);">70/20/10</div>
+                <div class="stat-label">pass / fail / edge case distribution — mirrors real-world traffic profiles</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION DIVIDER — WHY THOUGHTWORKS
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="section-slide">
+        <div class="section-num">05</div>
+        <h2>Why Thoughtworks</h2>
+        <div class="section-desc">Proof points, differentiators, and why engineering-led beats advisory-led for this problem.</div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 15 — PROOF POINTS
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Why Thoughtworks</div>
+          <h2>Our Proof Points</h2>
+        </div>
+        <div class="slide-body">
+          <div class="two-col">
+            <div>
+              <div style="margin-bottom:0.9rem;">
+                <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);margin-bottom:0.4rem;">Published Thought Leadership</div>
+                <ul>
+                  <li>Point of view: <em>Becoming ISO-native: navigating end of coexistence in ISO 20022 migration</em> — thoughtworks.com</li>
+                  <li>OWASP LLM Top 10 security assessment for AI-in-payments</li>
+                  <li>ISO 20022 payment pipeline architecture documentation</li>
+                </ul>
+              </div>
+              <div style="margin-bottom:0.9rem;">
+                <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);margin-bottom:0.4rem;">Working Reference Implementation</div>
+                <ul>
+                  <li>Multi-agent Kafka pipeline — sign, publish, verify, validate, reconcile</li>
+                  <li>Ed25519 message integrity with tamper detection</li>
+                  <li>DuckDB reconciliation analytics proving exactly-once processing</li>
+                  <li>AI-generated test data for all 12 pain message sets</li>
+                </ul>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.7rem;">
+              <div class="panel teal-border">
+                <h4>Practice convergence</h4>
+                <p style="font-size:0.8rem;color:#3a4a52;line-height:1.5;margin-top:0.3rem;">This problem sits at the intersection of three Thoughtworks strengths:</p>
+                <ul style="margin-top:0.4rem;">
+                  <li><span class="tag teal">Payments</span> Domain knowledge, ISO 20022 expertise</li>
+                  <li><span class="tag green">Data</span> Engineering, quality, governance at scale</li>
+                  <li><span class="tag coral">AI</span> LLM-powered test data, automation agents</li>
+                </ul>
+              </div>
+              <div class="callout mist">
+                <strong>Engineering-led, not advisory-led.</strong> We embed with your teams. The deliverable is working software — architecture, pipelines, test automation, and trained data — not a roadmap deck.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SLIDE 16 — NEXT STEPS
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header">
+          <div class="eyebrow">Next Steps</div>
+          <h2>Where Do We Start?</h2>
+        </div>
+        <div class="slide-body">
+          <div class="next-steps">
+            <div class="step-card">
+              <div class="step-label">Option 1 — 2 weeks</div>
+              <h4>Rapid Assessment</h4>
+              <p>Current-state gap analysis across all five practice areas. November 2026 readiness score. Prioritised roadmap with effort estimates and dependency mapping. Delivered as a working session with your payments and data teams.</p>
+            </div>
+            <div class="step-card coral">
+              <div class="step-label">Option 2 — 6–8 weeks</div>
+              <h4>Pilot Engagement</h4>
+              <p>One message set, end-to-end — ISO-native architecture + automated data validation + AI-powered test automation. Tangible working software at the end. Proof of concept for the broader programme.</p>
+            </div>
+            <div class="step-card green">
+              <div class="step-label">Option 3 — Full programme</div>
+              <h4>November 2026 Delivery</h4>
+              <p>Structured address and LEI remediation programme scoped for the CBPR+ deadline. Fixed-scope, time-boxed. Combines data engineering, governance framework, and pre-flight validation pipeline.</p>
+            </div>
+            <div class="panel teal-border" style="display:flex;flex-direction:column;justify-content:center;">
+              <h4>Suggested first step</h4>
+              <p style="font-size:0.82rem;color:#3a4a52;line-height:1.5;margin-top:0.4rem;">A 90-minute discovery call with your Head of Payments and Chief Data Officer. We bring a pre-built readiness questionnaire and a working demo of the test automation pipeline.</p>
+              <div style="margin-top:0.7rem;">
+                <div style="font-size:0.75rem;font-weight:600;color:var(--teal);">raghunath.t@thoughtworks.com</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         APPENDIX DIVIDER
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="section-slide" style="background:#1a2a32 !important;">
+        <div style="color:rgba(255,255,255,0.4);font-size:0.7rem;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:0.8rem;">Reference Material</div>
+        <h2 style="color:var(--white);">Appendix</h2>
+        <div class="section-desc" style="color:rgba(255,255,255,0.55);">Supporting detail — ISO 20022 message structure, network timelines, vendor landscape, and data field comparison.</div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         APPENDIX A1 — MESSAGE HIERARCHY
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header" style="background:#1a2a32;">
+          <div class="eyebrow">Appendix A1</div>
+          <h2>ISO 20022 Message Hierarchy — pain.001</h2>
+        </div>
+        <div class="slide-body mist-bg">
+          <div class="appendix-badge">Reference</div>
+          <div class="two-col">
+            <div>
+              <div style="font-family:monospace;font-size:0.78rem;line-height:1.9;color:#1a2a32;background:var(--white);padding:1rem;border-radius:6px;border:1px solid #dde4e8;">
+                <span style="color:var(--teal-dk);font-weight:700;">Document</span><br/>
+                └── <span style="color:var(--teal);">CstmrCdtTrfInitn</span><br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:var(--green);">GrpHdr</span> <span style="color:#8a9aa2;">(GroupHeader114)</span><br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── MsgId<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── CreDtTm<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── NbOfTxs<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── InitgPty<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:var(--amber);">PmtInf</span> <span style="color:#8a9aa2;">[1..*]</span><br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── Dbtr / DbtrAcct / DbtrAgt<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── ReqdExctnDt<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── <span style="color:var(--coral);">CdtTrfTxInf</span> <span style="color:#8a9aa2;">[1..*]</span><br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── Cdtr / CdtrAcct<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── Amt<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;└── SplmtryData <span style="color:#8a9aa2;">[0..*]</span>
+              </div>
+            </div>
+            <div>
+              <table>
+                <tr><th>Abbreviation</th><th>Meaning</th></tr>
+                <tr><td>Cdtr / Dbtr</td><td>Creditor / Debtor</td></tr>
+                <tr><td>Agt</td><td>Agent (bank)</td></tr>
+                <tr><td>Acct</td><td>Account</td></tr>
+                <tr><td>PmtInf</td><td>Payment Information</td></tr>
+                <tr><td>CdtTrf</td><td>Credit Transfer</td></tr>
+                <tr><td>GrpHdr</td><td>Group Header</td></tr>
+                <tr><td>NbOfTxs</td><td>Number of Transactions</td></tr>
+                <tr><td>CtrlSum</td><td>Control Sum</td></tr>
+                <tr><td>ReqdExctnDt</td><td>Requested Execution Date</td></tr>
+                <tr><td>ChrgBr</td><td>Charge Bearer</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         APPENDIX A2 — NETWORK TIMELINE
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header" style="background:#1a2a32;">
+          <div class="eyebrow">Appendix A2</div>
+          <h2>Network-by-Network Deadline Timeline</h2>
+        </div>
+        <div class="slide-body mist-bg">
+          <div class="appendix-badge">Reference</div>
+          <table>
+            <tr><th>Date</th><th>Network</th><th>Event</th><th>Status</th></tr>
+            <tr><td>Apr 2024</td><td>CHIPS (US)</td><td>Full ISO 20022 migration complete</td><td><span class="tag green">Complete</span></td></tr>
+            <tr><td>Jul 2025</td><td>Fedwire Funds (US)</td><td>Goes live with ISO 20022 — pacs.008 / pacs.009</td><td><span class="tag green">Complete</span></td></tr>
+            <tr><td>Nov 22, 2025</td><td>SWIFT CBPR+</td><td>MT coexistence ends — MT cross-border messages no longer accepted. Penalty fees now live for translation tool users.</td><td><span class="tag coral">Live — penalties active</span></td></tr>
+            <tr><td>Nov 2026</td><td>SWIFT CBPR+</td><td>Structured postal address mandate — unstructured addresses rejected by the network</td><td><span class="tag amber">17 months</span></td></tr>
+            <tr><td>Ongoing</td><td>SEPA / TARGET2</td><td>ECB mandate — European scope, UDFS implementation guide</td><td><span class="tag teal">In progress</span></td></tr>
+            <tr><td>2023</td><td>CHAPS (UK)</td><td>Bank of England — ISO 20022 migration complete</td><td><span class="tag green">Complete</span></td></tr>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         APPENDIX A3 — MT VS MX FIELD COMPARISON
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header" style="background:#1a2a32;">
+          <div class="eyebrow">Appendix A3</div>
+          <h2>MT vs. MX Field Comparison</h2>
+        </div>
+        <div class="slide-body mist-bg">
+          <div class="appendix-badge">Reference</div>
+          <table>
+            <tr><th>Data Element</th><th>SWIFT MT (Legacy)</th><th>ISO 20022 MX</th><th>Impact</th></tr>
+            <tr>
+              <td>Beneficiary name + address</td>
+              <td>Field 59 — free-text, 140 chars, no structure</td>
+              <td>Structured: Nm, StrtNm, BldgNb, TwnNm, PstCd, Ctry</td>
+              <td><span class="tag amber">Nov 2026 mandate</span></td>
+            </tr>
+            <tr>
+              <td>Remittance information</td>
+              <td>Field 70 — free-text, opaque to AML</td>
+              <td>Structured: Ustrd or Strd with Cdtr/Ref/AddtlRmtInf</td>
+              <td><span class="tag green">AML uplift</span></td>
+            </tr>
+            <tr>
+              <td>Purpose / transaction type</td>
+              <td>Not standardised — free-text or absent</td>
+              <td>Purp/Cd — ISO 20022 external purpose code list</td>
+              <td><span class="tag green">Analytics uplift</span></td>
+            </tr>
+            <tr>
+              <td>Legal Entity Identifier</td>
+              <td>Not supported</td>
+              <td>LEI field on debtor, creditor, intermediaries</td>
+              <td><span class="tag green">Regulatory reporting</span></td>
+            </tr>
+            <tr>
+              <td>Charges / fee bearer</td>
+              <td>Field 71A — 4-char code (SHA/OUR/BEN)</td>
+              <td>ChrgBr — DEBT/CRED/SHAR/SLEV (explicit)</td>
+              <td><span class="tag teal">Clarity</span></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         APPENDIX A4 — VENDOR LANDSCAPE
+    ══════════════════════════════════════════ -->
+    <section>
+      <div class="slide-inner">
+        <div class="slide-header" style="background:#1a2a32;">
+          <div class="eyebrow">Appendix A4</div>
+          <h2>Vendor Landscape — Where Thoughtworks Sits</h2>
+        </div>
+        <div class="slide-body mist-bg">
+          <div class="appendix-badge">Reference</div>
+          <table>
+            <tr><th>Category</th><th>Examples</th><th>What They Offer</th><th>Gap</th></tr>
+            <tr>
+              <td>Middleware / Cloud hubs</td>
+              <td>Volante Technologies</td>
+              <td>No-code MX processing, API-driven, cloud infra, SWIFT/Fedwire/SEPA/RTP</td>
+              <td>Technical plumbing only — no data strategy, no AML uplift</td>
+            </tr>
+            <tr>
+              <td>Big 4 consulting</td>
+              <td>Deloitte, EY, KPMG</td>
+              <td>Readiness assessments, gap analysis, programme management, regulatory advisory</td>
+              <td>Advisory-only, expensive, no embedded engineering delivery</td>
+            </tr>
+            <tr>
+              <td>Risk / compliance specialists</td>
+              <td>Protiviti, NICE Actimize</td>
+              <td>Readiness consulting + AML/sanctions retooling for enriched data</td>
+              <td>Narrow to compliance — no architecture or data engineering depth</td>
+            </tr>
+            <tr>
+              <td>SWIFT integrators</td>
+              <td>Axletree, IntellectEU</td>
+              <td>SWIFT connectivity, MT↔MX translation, gap analysis + roadmaps</td>
+              <td>Translation layer focus — reinforces the tactical debt</td>
+            </tr>
+            <tr>
+              <td style="color:var(--teal-dk);font-weight:700;">Thoughtworks</td>
+              <td style="color:var(--teal-dk);font-weight:700;">Payments Practice</td>
+              <td>ISO-native architecture + data remediation + AI test automation + AML model uplift — engineering-led delivery</td>
+              <td style="color:var(--green);font-weight:600;">This is the gap we fill</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.0/reveal.min.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    progress: true,
+    controls: true,
+    controlsTutorial: false,
+    transition: 'fade',
+    transitionSpeed: 'fast',
+    center: false,
+    margin: 0,
+    width: 1100,
+    height: 680,
+    minScale: 0.4,
+    maxScale: 1.6,
+    keyboard: {
+      39: 'next',
+      37: 'prev',
+    }
+  });
+</script>
+</body>
+</html>
