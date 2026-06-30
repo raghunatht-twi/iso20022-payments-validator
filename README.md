@@ -9,7 +9,10 @@ Tools for validating, generating, and streaming **ISO 20022 pain** (Payments Ini
 | [Architecture](docs/architecture.html) | System design, data flows, component breakdown, design decisions |
 | [Executive Report](docs/executive-report.html) | Business value, effort reduction, and ROI narrative |
 | [Executive Summary](docs/executive-summary.md) | Comprehensive project summary — pipeline results, security posture, and artefact inventory |
+| [Pitch Deck](docs/iso20022-pitch-deck.html) | Stakeholder-facing slide deck |
 | [OWASP LLM Security Assessment](docs/owasp-llm-security-report.html) | Full security assessment against OWASP LLM Top 10 (2025) |
+| [pain.001 Schema Explained](docs/pain001-schema-explained.md) | Annotated walkthrough of the pain.001.001.13 XSD structure |
+| [Pain Message Set Relationships](docs/pain-message-set-relationships.md) | How the 18 message sets relate to each other |
 
 ## Repository Contents
 
@@ -32,12 +35,26 @@ schema/
 test_data/
 └── pain/
     ├── 001/   hand-crafted and generated XML test messages
-    └── 002/   generated XML test messages
+    ├── 002/   generated XML test messages
+    ├── 007/   generated XML test messages
+    ├── 008/   generated XML test messages
+    ├── 009/   generated XML test messages
+    ├── 010/   generated XML test messages
+    ├── 011/   generated XML test messages
+    ├── 012/   generated XML test messages
+    ├── 013/   generated XML test messages
+    ├── 014/   generated XML test messages
+    ├── 017/   generated XML test messages
+    └── 018/   generated XML test messages
 
 docs/
     architecture.html               System architecture document
     executive-report.html           Business value and executive summary
+    executive-summary.md            Comprehensive project summary
+    iso20022-pitch-deck.html        Stakeholder pitch deck
     owasp-llm-security-report.html  OWASP LLM Top 10 security assessment
+    pain001-schema-explained.md     Annotated pain.001 XSD walkthrough
+    pain-message-set-relationships.md  How the 18 message sets relate
 
 keys/
     sender_private.pem  Ed25519 private key — signs every Kafka message (gitignored)
@@ -81,6 +98,13 @@ uv run ISO20022_validator.py pain.001.001
 
 Report written to `reports/<domain>_<timestamp>_report.html`.
 
+The validator runs two layers of checks:
+
+1. **XSD validation** — structural conformance against the ISO 20022 schema
+2. **Business rule validation** — semantic checks beyond structure (see §2 below)
+
+The HTML report surfaces both: XSD errors as failures, business rule errors as failures, and business rule warnings as a separate badge.
+
 ### Raw xmllint
 
 ```bash
@@ -89,7 +113,27 @@ xmllint --schema schema/pain/001/pain.001.001.13.xsd --noout <your-message.xml>
 
 ---
 
-## 2 — Test Data Generator
+## 2 — Business Rule Validator
+
+`business_rule_validator.py` is a library module imported by the validator that applies ISO 20022 semantic rules that XSD cannot express. It runs automatically whenever you invoke `ISO20022_validator.py` — no separate command is needed.
+
+Rules enforced across all 12 message sets include:
+
+| Rule | Example |
+|---|---|
+| `NbOfTxs` must equal actual transaction count | Group header count mismatches number of `CdtTrfTxInf` elements |
+| `CtrlSum` must equal sum of instructed amounts (±0.01) | Control sum drift from transaction total |
+| Currency codes must be valid ISO 4217 | `Ccy="XYZ"` rejected |
+| BIC format validation | Must match `^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$` |
+| Execution date must not be in the past | `ReqdExctnDt` < today |
+| Status and reason codes must be from the ISO 20022 recognised set | `GrpSts`, `TxSts`, reversal/rejection reason codes |
+| Mandate fields required in relevant message sets | `MndtId`, `OrgnlMndtId` presence checks |
+
+Violations are reported as `ERROR` (fail) or `WARNING` (pass with caution), both surfaced in the HTML report and the summary cards.
+
+---
+
+## 3 — Test Data Generator
 
 Generates synthetic ISO 20022 XML test messages for any schema using Claude (Anthropic API).
 
@@ -112,13 +156,13 @@ uv run generate_test_data.py pain
 uv run generate_test_data.py --model=claude-opus-4-8 pain 001 002
 ```
 
-Generated files are saved to `test_data/<domain>/<msg_set>/`:
+Generated files are saved to `test_data/<domain>/<msg_set>/` with a date stamp appended:
 
-| Prefix | Meaning |
-|---|---|
-| `gen-pass-NNN.xml` | Valid — passes XSD validation |
-| `gen-fail-NNN.xml` | Invalid — deliberate schema violation |
-| `gen-edge-NNN.xml` | Valid — tests boundary conditions |
+| Prefix | Example | Meaning |
+|---|---|---|
+| `gen-pass-NNN-MMDDYYYY.xml` | `gen-pass-001-06302026.xml` | Valid — passes XSD validation |
+| `gen-fail-NNN-MMDDYYYY.xml` | `gen-fail-003-06302026.xml` | Invalid — deliberate schema violation |
+| `gen-edge-NNN-MMDDYYYY.xml` | `gen-edge-002-06302026.xml` | Valid — tests boundary conditions |
 
 Each run also produces an HTML summary report in `reports/gen_<timestamp>_report.html`.
 
@@ -134,7 +178,48 @@ Each generated XML is validated by lxml. If a "pass" case fails validation it is
 
 ---
 
-## 3 — Kafka Pipeline (Multi-Agent)
+## 4 — Analytics
+
+Two analytics scripts query XML test data and `state.db` via DuckDB to surface payment patterns, validation outcomes, and pipeline statistics.
+
+### generate_analytics_report.py — multi-schema HTML dashboard
+
+Produces a Thoughtworks-branded, sidebar-navigable HTML dashboard covering all 12 pain message sets.
+
+```bash
+uv run generate_analytics_report.py
+```
+
+Output: `reports/analytics_report_<timestamp>.html`
+
+The report includes, per message set:
+
+- File and transaction counts by category (gen-pass / gen-fail / gen-edge / hand-crafted)
+- Amount distribution — min, max, average, total instructed value
+- Currency and country breakdown (debtor/creditor IBAN origin)
+- BIC/bank agent coverage
+- Pipeline validation outcomes correlated with test category
+
+### pain001_analytics.py — pain.001 console analytics
+
+Prints detailed DuckDB analytics for pain.001 to the terminal, joining XML content with pipeline state.
+
+```bash
+uv run pain001_analytics.py
+```
+
+Outputs tabular sections including:
+
+- Overview — file count, transaction count, average and total transaction value
+- Amount distribution by currency
+- Debtor and creditor country breakdown
+- Charge bearer code frequency
+- Pipeline pass/fail breakdown correlated with test category
+- Processing latency by validation status
+
+---
+
+## 5 — Kafka Pipeline (Multi-Agent)
 
 An event-driven pipeline that streams test messages through Kafka, validates them, and proves exactly-once processing via a reconciliation report. Every message is **Ed25519-signed** by the sender and verified by the receiver before XSD validation.
 
@@ -287,6 +372,24 @@ docker exec -it payments-kafka-1 kafka-console-consumer \
   --bootstrap-server localhost:9092 \
   --topic iso20022.dlq \
   --from-beginning
+```
+
+### Tamper testing
+
+`tamper_agent.py` publishes messages whose XML has been modified after signing, simulating in-transit tampering. The receiver detects the signature mismatch and routes them to `iso20022.tampered`.
+
+```bash
+uv run tamper_agent.py       # tamper 3 messages (default)
+uv run tamper_agent.py 10    # tamper 10 messages
+```
+
+Run order for the tamper scenario:
+
+```bash
+uv run sender_agent.py          # publish legitimate signed messages
+uv run tamper_agent.py          # publish tampered messages (content ≠ signature)
+uv run receiver_agent.py        # tampered messages are quarantined
+uv run reconciliation_report.py # "Tampered Message Log" section shows detections
 ```
 
 ---

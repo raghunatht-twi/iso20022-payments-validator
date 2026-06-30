@@ -6,8 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository contains ISO 20022 XSD schemas and a suite of tools for the **pain** (Payments Initiation) domain, covering message sets 001–018:
 
-- **Validator** — validates XML messages against XSD schemas, produces HTML reports
+- **Validator** — validates XML messages against XSD schemas, runs business rule checks, produces HTML reports
+- **Business Rule Validator** — semantic checks beyond XSD (transaction counts, control sums, currency codes, BIC format, date constraints, status/reason codes)
 - **Test Data Generator** — AI agent that generates synthetic XML test fixtures using Claude
+- **Analytics** — DuckDB-powered HTML dashboard and console analytics across all 12 pain message sets
 - **Kafka Pipeline** — multi-agent system that streams messages through Kafka, validates them, and produces a reconciliation report proving exactly-once processing
 - **Message Integrity** — Ed25519 digital signatures ensure messages are not tampered in transit
 
@@ -22,7 +24,7 @@ schema/
 test_data/
 └── <domain>/               e.g. pain/
     └── <message-set>/      e.g. 001/
-        └── *.xml           hand-crafted and generated (gen-pass-NNN, gen-fail-NNN, gen-edge-NNN)
+        └── *.xml           hand-crafted and generated (gen-pass-NNN-MMDDYYYY, gen-fail-NNN-MMDDYYYY, gen-edge-NNN-MMDDYYYY)
 
 keys/                       Ed25519 key pair (gitignored — NEVER commit)
     sender_private.pem      signs every outgoing Kafka message
@@ -31,7 +33,11 @@ keys/                       Ed25519 key pair (gitignored — NEVER commit)
 docs/
 └── architecture.html               System architecture document
 └── executive-report.html           Business value and executive summary
+└── executive-summary.md            Comprehensive project summary
+└── iso20022-pitch-deck.html        Stakeholder pitch deck
 └── owasp-llm-security-report.html  OWASP LLM Top 10 security assessment
+└── pain001-schema-explained.md     Annotated pain.001.001.13 XSD walkthrough
+└── pain-message-set-relationships.md  How the 18 pain message sets relate
 
 reports/                    generated HTML reports (gitignored)
 state.db                    SQLite pipeline state — sent, processed, duplicates, tampered (gitignored)
@@ -63,6 +69,18 @@ uv run ISO20022_validator.py pain.001.001   # resolves to pain.001.001.13.xsd
 
 Domain argument must match `^[a-z]{4}(\.\d{3}){0,3}$`. Passing only `pain` errors if multiple message-set schemas exist (by design).
 
+The validator runs two layers of checks in sequence:
+1. **XSD validation** — structural conformance via lxml
+2. **Business rule validation** — semantic checks via `business_rule_validator.py` (imported module, not a standalone script)
+
+### business_rule_validator.py
+
+Library module imported by `ISO20022_validator.py`. Not a standalone script. Provides `validate(root, message_set) -> list[RuleViolation]` — accepts an lxml element and a message-set string (`"001"`, `"002"`, etc.), returns a list of `RuleViolation` dataclasses with `rule_id`, `severity` (`"ERROR"` | `"WARNING"`), `field_path`, `message`, and optional `actual`/`expected` values.
+
+Rules cover all 12 message sets: transaction count vs `NbOfTxs`, control sum arithmetic, ISO 4217 currency validation, BIC regex, execution date constraints, status/reason code allowlists, and mandate field presence checks.
+
+`_RULES` dispatch dict maps message-set string → rule function. Adding a new message set requires only a new function and a dict entry.
+
 ### generate_test_data.py
 
 AI agent (calls Claude via Anthropic API) that generates ~50 synthetic XML test messages per XSD, with 70% pass / 20% fail / 10% edge distribution. Each generated XML is validated by lxml and re-bucketed if it doesn't match its intended category.
@@ -76,7 +94,7 @@ uv run generate_test_data.py pain.001                        # dotted notation (
 uv run generate_test_data.py --model=claude-opus-4-8 pain 001 002
 ```
 
-Default model: `claude-sonnet-4-6`. Adaptive thinking enabled automatically for Opus/Fable models only. Generated files: `gen-pass-NNN.xml`, `gen-fail-NNN.xml`, `gen-edge-NNN.xml`.
+Default model: `claude-sonnet-4-6`. Adaptive thinking enabled automatically for Opus/Fable models only. Generated files include a `MMDDYYYY` date stamp: `gen-pass-NNN-MMDDYYYY.xml`, `gen-fail-NNN-MMDDYYYY.xml`, `gen-edge-NNN-MMDDYYYY.xml`.
 
 ### tamper_agent.py
 
@@ -146,6 +164,30 @@ uv run reconciliation_report.py
 ```
 
 Dependencies: `duckdb>=1.0,<2.0` (declared via PEP 723 inline metadata).
+
+### generate_analytics_report.py
+
+Generates a Thoughtworks-branded, sidebar-navigable HTML analytics dashboard covering all 12 pain message sets. Reads XML test files directly and optionally joins with `state.db` pipeline results.
+
+```bash
+uv run generate_analytics_report.py
+```
+
+Output: `reports/analytics_report_<timestamp>.html`. Dependencies: `duckdb>=1.0,<2.0`, `lxml>=5.0`, `pandas>=2.0`.
+
+Report structure: Overview section (executive summary across all sets) + one section per message set, each containing file/transaction counts by category, amount distribution, currency breakdown, debtor/creditor country analysis, BIC coverage, and pipeline outcome correlation.
+
+Internal structure: `_load_ms(ms)` parses XML into two DataFrames — base (one row per file) and detail (one row per transaction). Each report section is its own `_html_*` function. DuckDB runs analytics over Pandas DataFrames registered as views.
+
+### pain001_analytics.py
+
+Console analytics tool for pain.001 — prints tabular DuckDB query results to stdout. Joins XML content with `state.db` pipeline state for latency and outcome analysis.
+
+```bash
+uv run pain001_analytics.py
+```
+
+No arguments. Outputs numbered sections: overview, amount distribution by currency, debtor/creditor country breakdown, charge bearer frequency, pipeline outcome by test category, and processing latency by validation status. Requires `state.db` to exist for latency/outcome joins.
 
 ## Kafka Topics
 
@@ -276,7 +318,7 @@ All scripts use PEP 723 inline dependency metadata (`# /// script ... # ///`) so
 
 ### Python Clean Code Conventions
 
-All six scripts in this repository follow these conventions — maintain them when editing:
+All scripts in this repository follow these conventions — maintain them when editing:
 
 - **Naming**: `snake_case` functions/variables, `PascalCase` classes, `SCREAMING_SNAKE_CASE` module-level constants, `_leading_underscore` for private internals
 - **Functions**: one function = one job; extract inner loops and per-item logic into named helpers (e.g. `_item_to_case`, `_send_file`, `_process_message`, `_query_schema_breakdown`)
