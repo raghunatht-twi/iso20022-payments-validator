@@ -63,6 +63,7 @@ class AnalyticsResult:
     latency_by_schema: list[tuple] = field(default_factory=list)
     pipeline_timeline: tuple | None = None
     latency_scatter:   list[tuple] = field(default_factory=list)
+    rule_violations:   list[tuple] = field(default_factory=list)
 
 
 def _query_schema_breakdown(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
@@ -202,6 +203,25 @@ def _query_tampered_by_set(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
     """).fetchall()
 
 
+def _query_rule_violations(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
+    try:
+        return conn.execute("""
+            SELECT
+                rule_id,
+                severity,
+                COUNT(*)                     AS total_violations,
+                COUNT(DISTINCT message_set)  AS schemas_affected,
+                COUNT(DISTINCT message_id)   AS messages_affected,
+                FIRST(field_path)            AS sample_field,
+                FIRST(message)               AS sample_message
+            FROM state.rule_violations
+            GROUP BY rule_id, severity
+            ORDER BY severity DESC, total_violations DESC
+        """).fetchall()
+    except Exception:
+        return []
+
+
 def _run_analytics(db_path: Path) -> AnalyticsResult | None:
     try:
         conn = duckdb.connect()
@@ -214,6 +234,7 @@ def _run_analytics(db_path: Path) -> AnalyticsResult | None:
             latency_by_schema=_query_latency_by_schema(conn),
             pipeline_timeline=_query_pipeline_timeline(conn),
             latency_scatter=_query_latency_scatter(conn),
+            rule_violations=_query_rule_violations(conn),
         )
         conn.close()
         return result
@@ -478,6 +499,35 @@ def _build_latency_rows(rows: list[tuple]) -> str:
     return "\n".join(out)
 
 
+def _build_rule_violation_rows(rows: list[tuple]) -> str:
+    if not rows:
+        return (
+            "<tr><td colspan='6' style='text-align:center;color:#888;padding:1.5rem;'>"
+            "No business rule violations recorded.</td></tr>"
+        )
+    out = []
+    for rule_id, severity, total, schemas, msgs, field_path, sample_msg in rows:
+        sev_colour = "#F2617A" if severity == "ERROR" else "#CC850A"
+        sev_badge = (
+            f'<span style="background:{sev_colour};color:#fff;padding:2px 8px;'
+            f'border-radius:3px;font-size:0.75rem;font-weight:600;">{html.escape(str(severity))}</span>'
+        )
+        out.append(
+            "<tr>"
+            f"<td><code style='color:#634F7D;font-weight:600;'>{html.escape(str(rule_id))}</code></td>"
+            f"<td>{sev_badge}</td>"
+            f"<td style='text-align:center;font-weight:600;color:{sev_colour};'>{total}</td>"
+            f"<td style='text-align:center;color:#555;'>{msgs}</td>"
+            f"<td style='text-align:center;color:#555;'>{schemas}</td>"
+            f"<td style='font-size:0.82rem;color:#555;'>"
+            f"<strong style='color:#333;font-family:monospace;font-size:0.78rem;'>{html.escape(str(field_path or ''))}</strong>"
+            f"<br/><span style='color:#777;'>{html.escape(str(sample_msg or ''))[:120]}</span>"
+            f"</td>"
+            "</tr>"
+        )
+    return "\n".join(out)
+
+
 _DUCKDB_BADGE = '<span style="font-size:0.72rem;font-weight:400;color:#47A1AD;margin-left:0.5rem;">powered by DuckDB</span>'
 
 
@@ -713,12 +763,54 @@ def _latency_html(rows: list[tuple], timeline: tuple | None) -> str:
     </section>"""
 
 
+def _rule_violations_html(rows: list[tuple]) -> str:
+    n_errors   = sum(r[2] for r in rows if r[1] == "ERROR")
+    n_warnings = sum(r[2] for r in rows if r[1] == "WARNING")
+    subtitle = ""
+    if rows:
+        subtitle = (
+            f'<p style="font-size:0.87rem;color:#555;margin-bottom:1rem;">'
+            f'<strong style="color:#F2617A;">{n_errors} ERROR violation(s)</strong> across all messages '
+            f'(routed to DLQ) &nbsp;·&nbsp; '
+            f'<strong style="color:#CC850A;">{n_warnings} WARNING violation(s)</strong> '
+            f'(processed but flagged).'
+            f'</p>'
+        )
+    return f"""
+    <section>
+      <h2>Analytics — Business Rule Violations {_DUCKDB_BADGE}</h2>
+      <p style="font-size:0.87rem;color:#555;margin-bottom:0.6rem;">
+        Semantic violations detected after XSD validation — rules that XSD cannot enforce
+        (control sum accuracy, transaction counts, IBAN check digits, UUID v4 format, etc.).
+        ERROR-severity violations route the message to <code>iso20022.dlq</code>;
+        WARNING-severity violations are flagged but the message is still processed.
+      </p>
+      {subtitle}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:10%">Rule ID</th>
+            <th style="width:10%">Severity</th>
+            <th style="width:10%;text-align:center">Total</th>
+            <th style="width:12%;text-align:center">Messages</th>
+            <th style="width:12%;text-align:center">Schemas</th>
+            <th>Field / Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {_build_rule_violation_rows(rows)}
+        </tbody>
+      </table>
+    </section>"""
+
+
 def _analytics_html(analytics: AnalyticsResult | None) -> str:
     if analytics is None:
         return ""
     return (
         _schema_breakdown_html(analytics.schema_breakdown)
         + _error_patterns_html(analytics.error_patterns)
+        + _rule_violations_html(analytics.rule_violations)
         + _category_outcomes_html(analytics.category_outcomes)
         + _tampered_by_set_html(analytics.tampered_by_set)
         + _latency_html(analytics.latency_by_schema, analytics.pipeline_timeline)
@@ -752,14 +844,26 @@ def generate_report(
         f"{n_unprocessed} message(s) have not yet been processed.</p>"
     )
 
+    n_br_violations = (
+        sum(r[2] for r in analytics.rule_violations) if analytics else 0
+    )
+    n_br_errors     = (
+        sum(r[2] for r in analytics.rule_violations if r[1] == "ERROR") if analytics else 0
+    )
+    n_br_warnings   = (
+        sum(r[2] for r in analytics.rule_violations if r[1] == "WARNING") if analytics else 0
+    )
+
     css_vars = "\n".join(f"  --{k}: {v};" for k, v in _TW_COLOURS.items())
     cards = (
-        _summary_card("Total Sent",        total_sent,   "#003D4F")
-        + _summary_card("Pass",            n_pass,       "#689E78")
-        + _summary_card("Fail → DLQ",      n_fail,       "#F2617A")
+        _summary_card("Total Sent",        total_sent,    "#003D4F")
+        + _summary_card("Pass",            n_pass,        "#689E78")
+        + _summary_card("Fail → DLQ",      n_fail,        "#F2617A")
         + _summary_card("Not Processed",   n_unprocessed, "#CC850A")
         + _summary_card("Duplicates",      n_duplicates,  "#634F7D")
         + _summary_card("Tampered",        n_tampered,    "#F2617A")
+        + _summary_card("BR Errors",       n_br_errors,   "#F2617A")
+        + _summary_card("BR Warnings",     n_br_warnings, "#CC850A")
     )
 
     doc = f"""<!DOCTYPE html>
@@ -944,6 +1048,11 @@ def main() -> None:
         print(f"  Schema breakdown  : {len(analytics.schema_breakdown)} message sets")
         print(f"  Error patterns    : {len(analytics.error_patterns)} categories")
         print(f"  Category outcomes : {len(analytics.category_outcomes)} rows")
+        n_rv = len(analytics.rule_violations)
+        if n_rv:
+            n_e = sum(r[2] for r in analytics.rule_violations if r[1] == "ERROR")
+            n_w = sum(r[2] for r in analytics.rule_violations if r[1] == "WARNING")
+            print(f"  Rule violations   : {n_rv} rule(s) triggered — {n_e} error(s), {n_w} warning(s)")
         if analytics.pipeline_timeline:
             sender_sec, wait_sec, receiver_sec, _, throughput = analytics.pipeline_timeline
             print(f"  Pipeline latency  : sender {sender_sec}s | wait {wait_sec}s | receiver {receiver_sec}s | {int(throughput):,} msg/s")

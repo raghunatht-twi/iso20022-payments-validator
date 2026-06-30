@@ -25,6 +25,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from kafka import KafkaConsumer, KafkaProducer
 from lxml import etree
 
+from business_rule_validator import RuleViolation
+from business_rule_validator import validate as _br_validate
+
 
 _BASE_DIR  = Path(__file__).parent
 SCHEMA_DIR = _BASE_DIR / "schema"
@@ -93,20 +96,50 @@ def _load_schema(xsd_path: Path) -> etree.XMLSchema | None:
         return None
 
 
-def _validate(xml_content: str, schema: etree.XMLSchema) -> tuple[bool, str]:
+def _validate(
+    xml_content: str, schema: etree.XMLSchema, msg_set: str
+) -> tuple[bool, str, list[RuleViolation]]:
+    """XSD validation followed by business rule checks.
+
+    Business rules run only when XSD passes.
+    Returns (xsd_and_br_valid, error_summary, all_violations).
+    """
     try:
         element = etree.fromstring(xml_content.encode(), parser=_SAFE_PARSER)
-        if schema.validate(element):
-            return True, ""
-        errors = "; ".join(str(e.message) for e in schema.error_log)
-        return False, errors[:500]
+        if not schema.validate(element):
+            errors = "; ".join(str(e.message) for e in schema.error_log)
+            return False, errors[:500], []
     except etree.XMLSyntaxError as exc:
-        return False, f"XML syntax error: {exc}"
+        return False, f"XML syntax error: {exc}", []
+
+    violations = _br_validate(element, msg_set)
+    br_errors = [v for v in violations if v.severity == "ERROR"]
+    if br_errors:
+        error_str = "; ".join(f"[{v.rule_id}] {v.message}" for v in br_errors[:3])
+        return False, error_str[:500], violations
+
+    return True, "", violations
 
 
 def _open_db() -> sqlite3.Connection:
     conn = sqlite3.connect(STATE_DB, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rule_violations (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id  TEXT    NOT NULL,
+            message_set TEXT    NOT NULL,
+            file_name   TEXT    NOT NULL,
+            rule_id     TEXT    NOT NULL,
+            severity    TEXT    NOT NULL,
+            field_path  TEXT,
+            message     TEXT,
+            actual      TEXT,
+            expected    TEXT,
+            detected_at TEXT    NOT NULL
+        )
+    """)
+    conn.commit()
     return conn
 
 
@@ -166,6 +199,28 @@ def _record_tampered(
     conn.commit()
 
 
+def _record_violations(
+    conn: sqlite3.Connection,
+    msg_id: str,
+    msg_set: str,
+    file_name: str,
+    violations: list[RuleViolation],
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    conn.executemany(
+        "INSERT INTO rule_violations"
+        " (message_id, message_set, file_name, rule_id, severity,"
+        "  field_path, message, actual, expected, detected_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [
+            (msg_id, msg_set, file_name, v.rule_id, v.severity,
+             v.field_path, v.message, v.actual, v.expected, now)
+            for v in violations
+        ],
+    )
+    conn.commit()
+
+
 def _process_message(
     conn: sqlite3.Connection,
     consumer: KafkaConsumer,
@@ -210,10 +265,14 @@ def _process_message(
         consumer.commit()
         return
 
-    valid, error = _validate(xml_content, schema) if schema else (False, "Schema unavailable")
+    if schema:
+        valid, error, violations = _validate(xml_content, schema, msg_set)
+    else:
+        valid, error, violations = False, "Schema unavailable", []
 
     if valid:
-        print(f"  {label} PASS       {file_name}")
+        warn_note = f"  [{len([v for v in violations if v.severity == 'WARNING'])} warning(s)]" if violations else ""
+        print(f"  {label} PASS       {file_name}{warn_note}")
         _record_processed(conn, msg_id, domain, msg_set, file_name, "pass", None, None)
     else:
         print(f"  {label} FAIL       {file_name}  — {error[:100]}")
@@ -223,6 +282,9 @@ def _process_message(
             value=json.dumps({**payload, "validation_error": error}).encode(),
         )
         _record_processed(conn, msg_id, domain, msg_set, file_name, "fail", error, _DLQ_TOPIC)
+
+    if violations:
+        _record_violations(conn, msg_id, msg_set, file_name, violations)
 
     # Commit offset only after DB write — guarantees idempotency on crash
     consumer.commit()

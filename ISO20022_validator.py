@@ -17,6 +17,9 @@ from pathlib import Path
 
 from lxml import etree
 
+from business_rule_validator import RuleViolation
+from business_rule_validator import validate as _br_validate
+
 
 _BASE_DIR = Path(__file__).parent
 SCHEMA_DIR = _BASE_DIR / "schema"
@@ -143,6 +146,15 @@ class ValidationResult:
     file_path: Path
     passed: bool
     errors: list[ValidationError] = field(default_factory=list)
+    rule_violations: list[RuleViolation] = field(default_factory=list)
+
+    @property
+    def br_errors(self) -> list[RuleViolation]:
+        return [v for v in self.rule_violations if v.severity == "ERROR"]
+
+    @property
+    def br_warnings(self) -> list[RuleViolation]:
+        return [v for v in self.rule_violations if v.severity == "WARNING"]
 
 
 def _strip_ns(text: str) -> str:
@@ -292,17 +304,29 @@ def validate_file(xml_path: Path, schema: etree.XMLSchema) -> ValidationResult:
         )
         for e in schema.error_log
     ]
+
+    violations: list[RuleViolation] = []
+    if not errors:
+        msg_set = xml_path.parent.name
+        violations = _br_validate(doc.getroot(), msg_set)
+    br_errors = [v for v in violations if v.severity == "ERROR"]
+
     return ValidationResult(
         file_name=xml_path.name,
         file_path=xml_path,
-        passed=not errors,
+        passed=not errors and not br_errors,
         errors=errors,
+        rule_violations=violations,
     )
 
 
-def _badge(passed: bool) -> str:
-    colour = "var(--green)" if passed else "var(--coral)"
-    label = "PASS" if passed else "FAIL"
+def _badge(passed: bool, has_warnings: bool = False) -> str:
+    if passed and has_warnings:
+        colour, label = "var(--amber)", "WARN"
+    elif passed:
+        colour, label = "var(--green)", "PASS"
+    else:
+        colour, label = "var(--coral)", "FAIL"
     return (
         f'<span style="background:{colour};color:#fff;padding:3px 12px;'
         f'border-radius:3px;font-size:0.8rem;font-weight:600;letter-spacing:0.05em;">'
@@ -311,28 +335,56 @@ def _badge(passed: bool) -> str:
 
 
 def _comments_html(result: ValidationResult) -> str:
-    if result.passed:
+    if result.passed and not result.rule_violations:
         return (
             '<td style="color:var(--green);font-weight:500;">'
-            "All element names, values, and structure validated successfully against the schema."
+            "All XSD and business rule checks passed."
             "</td>"
         )
-    error_items = "".join(
-        f"<li>{html.escape(e.message)}</li>" for e in result.errors
-    )
-    fix_items = "".join(
-        f"<li>{html.escape(e.suggestion)}</li>" for e in result.errors
-    )
-    return (
-        "<td>"
-        f'<ol style="margin:0 0 0.5rem;padding-left:1.1rem;">{error_items}</ol>'
-        "<details>"
-        '<summary style="cursor:pointer;color:var(--teal);font-weight:600;'
-        'font-size:0.85rem;user-select:none;">Suggested fixes</summary>'
-        f'<ol style="margin:0.5rem 0 0;padding-left:1.1rem;color:#333;">{fix_items}</ol>'
-        "</details>"
-        "</td>"
-    )
+
+    parts: list[str] = []
+
+    if result.errors:
+        error_items = "".join(f"<li>{html.escape(e.message)}</li>" for e in result.errors)
+        fix_items   = "".join(f"<li>{html.escape(e.suggestion)}</li>" for e in result.errors)
+        parts.append(
+            f'<ol style="margin:0 0 0.5rem;padding-left:1.1rem;">{error_items}</ol>'
+            "<details>"
+            '<summary style="cursor:pointer;color:var(--teal);font-weight:600;'
+            'font-size:0.85rem;user-select:none;">Suggested fixes</summary>'
+            f'<ol style="margin:0.5rem 0 0;padding-left:1.1rem;color:#333;">{fix_items}</ol>'
+            "</details>"
+        )
+
+    if result.br_errors:
+        items = "".join(
+            f'<li><code style="color:var(--plum);">[{html.escape(v.rule_id)}]</code> '
+            f"{html.escape(v.field_path)}: {html.escape(v.message)}"
+            + (f" — got: <em>{html.escape(v.actual)}</em>" if v.actual else "")
+            + "</li>"
+            for v in result.br_errors
+        )
+        parts.append(
+            '<p style="color:var(--coral);font-weight:600;font-size:0.85rem;'
+            'margin:0.4rem 0 0.2rem;">Business Rule Errors</p>'
+            f'<ol style="margin:0;padding-left:1.1rem;font-size:0.87rem;">{items}</ol>'
+        )
+
+    if result.br_warnings:
+        items = "".join(
+            f'<li><code style="color:var(--amber);">[{html.escape(v.rule_id)}]</code> '
+            f"{html.escape(v.field_path)}: {html.escape(v.message)}"
+            + (f" — got: <em>{html.escape(v.actual)}</em>" if v.actual else "")
+            + "</li>"
+            for v in result.br_warnings
+        )
+        parts.append(
+            '<p style="color:var(--amber);font-weight:600;font-size:0.85rem;'
+            'margin:0.4rem 0 0.2rem;">Business Rule Warnings</p>'
+            f'<ol style="margin:0;padding-left:1.1rem;font-size:0.87rem;">{items}</ol>'
+        )
+
+    return f'<td>{"".join(parts)}</td>'
 
 
 def _summary_card(label: str, value: str | int, css_var: str) -> str:
@@ -358,6 +410,9 @@ def generate_report(
     passed = sum(1 for r in results if r.passed)
     failed = total - passed
     pass_rate = f"{passed / total * 100:.0f}%" if total else "N/A"
+    n_with_warnings = sum(1 for r in results if r.passed and r.br_warnings)
+    n_br_errors   = sum(len(r.br_errors)   for r in results)
+    n_br_warnings = sum(len(r.br_warnings) for r in results)
 
     css_vars = "\n".join(f"  --{k}: {v};" for k, v in _TW_COLOURS.items())
 
@@ -372,7 +427,7 @@ def generate_report(
     rows = "\n".join(
         f"<tr>"
         f"<td style='font-family:monospace;font-size:0.85rem;'>{html.escape(r.file_name)}</td>"
-        f"<td style='text-align:center;'>{_badge(r.passed)}</td>"
+        f"<td style='text-align:center;'>{_badge(r.passed, bool(r.br_warnings))}</td>"
         f"{_comments_html(r)}"
         f"</tr>"
         for r in results
@@ -381,9 +436,15 @@ def generate_report(
     cards = (
         _summary_card("Total Files", total, "--teal-dk")
         + _summary_card("Passed", passed, "--green")
+        + _summary_card("Warn", n_with_warnings, "--amber")
         + _summary_card("Failed", failed, "--coral")
         + _summary_card("Pass Rate", pass_rate, "--teal")
     )
+    if n_br_errors or n_br_warnings:
+        cards += (
+            _summary_card("BR Errors", n_br_errors, "--coral")
+            + _summary_card("BR Warnings", n_br_warnings, "--amber")
+        )
 
     html_doc = f"""<!DOCTYPE html>
 <html lang="en">
