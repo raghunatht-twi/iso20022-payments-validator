@@ -15,16 +15,16 @@ import duckdb
 import pandas as pd
 from lxml import etree
 
-ROOT      = Path(__file__).parent
-TEST_DATA = ROOT / "test_data" / "pain"
-STATE_DB  = ROOT / "state.db"
-REPORTS   = ROOT / "reports"
+_BASE_DIR  = Path(__file__).parent
+_TEST_DATA = _BASE_DIR / "test_data" / "pain"
+_STATE_DB  = _BASE_DIR / "state.db"
+_REPORTS   = _BASE_DIR / "reports"
 
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 
-MESSAGE_SETS = ["001", "002", "007", "008", "009", "010", "011", "012", "013", "014", "017", "018"]
+_MESSAGE_SETS = ["001", "002", "007", "008", "009", "010", "011", "012", "013", "014", "017", "018"]
 
-MS_LABELS = {
+_MS_LABELS = {
     "001": "Customer Credit Transfer Initiation",
     "002": "Customer Payment Status Report",
     "007": "Customer Payment Reversal",
@@ -39,14 +39,14 @@ MS_LABELS = {
     "018": "Mandate Suspension Request",
 }
 
-MS_COLOR = {
+_MS_COLOR = {
     "001": "coral", "002": "amber", "007": "plum",
     "008": "coral", "009": "green", "010": "green",
     "011": "green", "012": "green", "013": "coral",
     "014": "amber", "017": "green", "018": "green",
 }
 
-SIDEBAR_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
+_SIDEBAR_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ("Overview",           [("overview", "Executive Summary")]),
     ("Payment Initiation", [("001", "Credit Transfer"), ("008", "Direct Debit"), ("013", "Cdtr Activation")]),
     ("Status Reports",     [("002", "Payment Status"), ("014", "Activation Status")]),
@@ -59,13 +59,13 @@ SIDEBAR_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
 # ── schema helpers ─────────────────────────────────────────────────────────
 
 def _schema_version(ms: str) -> str:
-    xsds = list((ROOT / "schema" / "pain" / ms).glob("*.xsd"))
+    xsds = list((_BASE_DIR / "schema" / "pain" / ms).glob("*.xsd"))
     return xsds[0].stem if xsds else f"pain.{ms}"
 
 
 # ── XML field helpers ──────────────────────────────────────────────────────
 
-def _t(el: etree._Element | None) -> str | None:
+def _text(el: etree._Element | None) -> str | None:
     return el.text.strip() if el is not None and el.text else None
 
 
@@ -77,35 +77,42 @@ def _iban_pfx(iban: str | None) -> str | None:
     return iban[:2].upper() if iban and len(iban) >= 2 else None
 
 
+_CATEGORY_PREFIXES: list[tuple[str, str]] = [
+    ("gen-pass", "gen-pass"),
+    ("gen-fail", "gen-fail"),
+    ("gen-edge", "gen-edge"),
+]
+
+
 def _category(fname: str) -> str:
-    if fname.startswith("gen-pass"):  return "gen-pass"
-    if fname.startswith("gen-fail"):  return "gen-fail"
-    if fname.startswith("gen-edge"):  return "gen-edge"
+    for prefix, label in _CATEGORY_PREFIXES:
+        if fname.startswith(prefix):
+            return label
     return "hand-crafted"
 
 
 # ── per-message-set extractors ─────────────────────────────────────────────
 
-def _ext_001_013(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_001_013(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for pmt in root.findall(".//p:PmtInf", nsm):
-        di  = _t(pmt.find(".//p:DbtrAcct/p:Id/p:IBAN", nsm))
-        db  = _t(pmt.find(".//p:DbtrAgt/p:FinInstnId/p:BICFI", nsm))
-        pm  = _t(pmt.find("p:PmtMtd", nsm))
+        di  = _text(pmt.find(".//p:DbtrAcct/p:Id/p:IBAN", nsm))
+        db  = _text(pmt.find(".//p:DbtrAgt/p:FinInstnId/p:BICFI", nsm))
+        pm  = _text(pmt.find("p:PmtMtd", nsm))
         for tx in pmt.findall(".//p:CdtTrfTxInf", nsm):
             ie = tx.find(".//p:Amt/p:InstdAmt", nsm)
             try:
                 amt: float | None = float(ie.text) if ie is not None and ie.text else None
             except (ValueError, TypeError):
                 amt = None
-            ci = _t(tx.find(".//p:CdtrAcct/p:Id/p:IBAN", nsm))
+            ci = _text(tx.find(".//p:CdtrAcct/p:Id/p:IBAN", nsm))
             rows.append({
                 "file_name": fname, "category": cat, "pmt_method": pm,
                 "debtor_pfx": _iban_pfx(di), "debtor_bic": db,
                 "amount": amt, "currency": _attr(ie, "Ccy") if ie is not None else None,
                 "creditor_pfx": _iban_pfx(ci),
-                "charge_bearer": _t(tx.find("p:ChrgBr", nsm)),
-                "purpose": _t(tx.find(".//p:Purp/p:Cd", nsm)),
+                "charge_bearer": _text(tx.find("p:ChrgBr", nsm)),
+                "purpose": _text(tx.find(".//p:Purp/p:Cd", nsm)),
                 "has_uetr": tx.find(".//p:PmtId/p:UETR", nsm) is not None,
             })
     _null: dict[str, Any] = {
@@ -116,21 +123,21 @@ def _ext_001_013(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[
     return rows or [_null]
 
 
-def _ext_002_014(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_002_014(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for o in root.findall(".//p:OrgnlGrpInfAndSts", nsm):
         rows.append({"file_name": fname, "category": cat,
-                     "grp_status": _t(o.find("p:GrpSts", nsm)), "tx_status": None, "reason_code": None})
+                     "grp_status": _text(o.find("p:GrpSts", nsm)), "tx_status": None, "reason_code": None})
     for tx in root.findall(".//p:TxInfAndSts", nsm):
         rows.append({"file_name": fname, "category": cat, "grp_status": None,
-                     "tx_status": _t(tx.find("p:TxSts", nsm)),
-                     "reason_code": _t(tx.find(".//p:StsRsnInf/p:Rsn/p:Cd", nsm))})
+                     "tx_status": _text(tx.find("p:TxSts", nsm)),
+                     "reason_code": _text(tx.find(".//p:StsRsnInf/p:Rsn/p:Cd", nsm))})
     _null: dict[str, Any] = {"file_name": fname, "category": cat,
                               "grp_status": None, "tx_status": None, "reason_code": None}
     return rows or [_null]
 
 
-def _ext_007(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_007(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for tx in root.findall(".//p:TxInf", nsm):
         ae = tx.find(".//p:OrgnlInstdAmt", nsm)
@@ -140,23 +147,23 @@ def _ext_007(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict
             amt = None
         rows.append({"file_name": fname, "category": cat, "orig_amount": amt,
                      "currency": _attr(ae, "Ccy") if ae is not None else None,
-                     "reversal_reason": _t(tx.find(".//p:RvslRsnInf/p:Rsn/p:Cd", nsm))})
+                     "reversal_reason": _text(tx.find(".//p:RvslRsnInf/p:Rsn/p:Cd", nsm))})
     _null: dict[str, Any] = {"file_name": fname, "category": cat,
                               "orig_amount": None, "currency": None, "reversal_reason": None}
     return rows or [_null]
 
 
-def _ext_008(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_008(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for pmt in root.findall(".//p:PmtInf", nsm):
-        ci = _t(pmt.find(".//p:CdtrAcct/p:Id/p:IBAN", nsm))
+        ci = _text(pmt.find(".//p:CdtrAcct/p:Id/p:IBAN", nsm))
         for tx in pmt.findall(".//p:DrctDbtTxInf", nsm):
             ae = tx.find(".//p:InstdAmt", nsm)
             try:
                 amt: float | None = float(ae.text) if ae is not None and ae.text else None
             except (ValueError, TypeError):
                 amt = None
-            di = _t(tx.find(".//p:DbtrAcct/p:Id/p:IBAN", nsm))
+            di = _text(tx.find(".//p:DbtrAcct/p:Id/p:IBAN", nsm))
             rows.append({"file_name": fname, "category": cat,
                          "amount": amt, "currency": _attr(ae, "Ccy") if ae is not None else None,
                          "debtor_pfx": _iban_pfx(di), "creditor_pfx": _iban_pfx(ci)})
@@ -165,51 +172,51 @@ def _ext_008(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict
     return rows or [_null]
 
 
-def _ext_009(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_009(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for m in root.findall(".//p:Mndt", nsm):
-        ci = _t(m.find(".//p:CdtrAcct/p:Id/p:IBAN", nsm))
-        di = _t(m.find(".//p:DbtrAcct/p:Id/p:IBAN", nsm))
+        ci = _text(m.find(".//p:CdtrAcct/p:Id/p:IBAN", nsm))
+        di = _text(m.find(".//p:DbtrAcct/p:Id/p:IBAN", nsm))
         rows.append({"file_name": fname, "category": cat,
-                     "tracking_ind": _t(m.find("p:TrckgInd", nsm)),
+                     "tracking_ind": _text(m.find("p:TrckgInd", nsm)),
                      "creditor_pfx": _iban_pfx(ci), "debtor_pfx": _iban_pfx(di)})
     _null: dict[str, Any] = {"file_name": fname, "category": cat,
                               "tracking_ind": None, "creditor_pfx": None, "debtor_pfx": None}
     return rows or [_null]
 
 
-def _ext_010(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_010(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows = [{"file_name": fname, "category": cat,
-             "amendment_reason": _t(a.find(".//p:AmdmntRsn/p:Rsn/p:Cd", nsm))}
+             "amendment_reason": _text(a.find(".//p:AmdmntRsn/p:Rsn/p:Cd", nsm))}
             for a in root.findall(".//p:UndrlygAmdmntDtls", nsm)]
     return rows or [{"file_name": fname, "category": cat, "amendment_reason": None}]
 
 
-def _ext_011(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_011(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows = [{"file_name": fname, "category": cat,
-             "cancellation_reason": _t(c.find(".//p:CxlRsn/p:Rsn/p:Cd", nsm))}
+             "cancellation_reason": _text(c.find(".//p:CxlRsn/p:Rsn/p:Cd", nsm))}
             for c in root.findall(".//p:UndrlygCxlDtls", nsm)]
     return rows or [{"file_name": fname, "category": cat, "cancellation_reason": None}]
 
 
-def _ext_012(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_012(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows = [{"file_name": fname, "category": cat,
-             "accepted": _t(a.find(".//p:AccptncRslt/p:Accptd", nsm)),
-             "rejection_reason": _t(a.find(".//p:AccptncRslt/p:RjctRsn/p:Rsn/p:Cd", nsm))}
+             "accepted": _text(a.find(".//p:AccptncRslt/p:Accptd", nsm)),
+             "rejection_reason": _text(a.find(".//p:AccptncRslt/p:RjctRsn/p:Rsn/p:Cd", nsm))}
             for a in root.findall(".//p:UndrlygAccptncDtls", nsm)]
     return rows or [{"file_name": fname, "category": cat, "accepted": None, "rejection_reason": None}]
 
 
-def _ext_017(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_017(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows = [{"file_name": fname, "category": cat,
-             "orig_mandate_id": _t(c.find(".//p:OrgnlMndt/p:OrgnlMndtId", nsm))}
+             "orig_mandate_id": _text(c.find(".//p:OrgnlMndt/p:OrgnlMndtId", nsm))}
             for c in root.findall(".//p:UndrlygCpyReqDtls", nsm)]
     return rows or [{"file_name": fname, "category": cat, "orig_mandate_id": None}]
 
 
-def _ext_018(root: etree._Element, nsm: dict, fname: str, cat: str) -> list[dict[str, Any]]:
+def _ext_018(root: etree._Element, nsm: dict[str, str], fname: str, cat: str) -> list[dict[str, Any]]:
     rows = [{"file_name": fname, "category": cat,
-             "suspension_reason": _t(s.find(".//p:SspnsnRsn/p:Rsn/p:Cd", nsm))}
+             "suspension_reason": _text(s.find(".//p:SspnsnRsn/p:Rsn/p:Cd", nsm))}
             for s in root.findall(".//p:UndrlygSspnsnDtls", nsm)]
     return rows or [{"file_name": fname, "category": cat, "suspension_reason": None}]
 
@@ -225,7 +232,7 @@ _EXTRACTORS: dict[str, Any] = {
 def _load_ms(ms: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     base:   list[dict[str, Any]] = []
     detail: list[dict[str, Any]] = []
-    for path in sorted((TEST_DATA / ms).glob("*.xml")):
+    for path in sorted((_TEST_DATA / ms).glob("*.xml")):
         try:
             tree = etree.parse(str(path), _PARSER)
         except etree.XMLSyntaxError:
@@ -240,7 +247,7 @@ def _load_ms(ms: str) -> tuple[pd.DataFrame, pd.DataFrame]:
             "file_name":   path.name,
             "message_set": ms,
             "category":    cat,
-            "msg_id":      _t(grp.find("p:MsgId", nsm)) if grp is not None else None,
+            "msg_id":      _text(grp.find("p:MsgId", nsm)) if grp is not None else None,
         })
         detail.extend(_EXTRACTORS[ms](root, nsm, path.name, cat))
     cols_b = ["file_name", "message_set", "category", "msg_id"]
@@ -251,16 +258,16 @@ def _load_ms(ms: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 # ── DuckDB helper ──────────────────────────────────────────────────────────
 
-def _q(con: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
+def _run_query(con: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
     try:
         return con.sql(sql).df()
-    except Exception:
+    except duckdb.Error:
         return pd.DataFrame()
 
 
 # ── HTML/string helpers ────────────────────────────────────────────────────
 
-def _e(v: Any) -> str:
+def _esc(v: Any) -> str:
     return _html_lib.escape(str(v)) if v is not None else "—"
 
 
@@ -269,8 +276,8 @@ def _stat(label: str, value: Any, color: str = "var(--teal)") -> str:
         f'<div class="stat-card">'
         f'<div class="stat-top" style="background:{color}"></div>'
         f'<div class="stat-body">'
-        f'<div class="stat-num">{_e(value)}</div>'
-        f'<div class="stat-lbl">{_e(label)}</div>'
+        f'<div class="stat-num">{_esc(value)}</div>'
+        f'<div class="stat-lbl">{_esc(label)}</div>'
         f'</div></div>'
     )
 
@@ -278,7 +285,7 @@ def _stat(label: str, value: Any, color: str = "var(--teal)") -> str:
 def _table(df: pd.DataFrame, hi: str | None = None) -> str:
     if df is None or df.empty:
         return '<p class="nd">No data.</p>'
-    ths  = "".join(f"<th>{_e(c)}</th>" for c in df.columns)
+    ths  = "".join(f"<th>{_esc(c)}</th>" for c in df.columns)
     body = ""
     for _, r in df.iterrows():
         tds = ""
@@ -287,9 +294,11 @@ def _table(df: pd.DataFrame, hi: str | None = None) -> str:
             cl = ""
             if hi and c == hi:
                 s = str(v).lower() if v is not None else ""
-                if s in ("pass", "accp", "true"):    cl = ' class="cg"'
-                elif s in ("fail", "rjct", "false"): cl = ' class="cr"'
-            tds += f"<td{cl}>{_e(v)}</td>"
+                if s in ("pass", "accp", "true"):
+                    cl = ' class="cg"'
+                elif s in ("fail", "rjct", "false"):
+                    cl = ' class="cr"'
+            tds += f"<td{cl}>{_esc(v)}</td>"
         body += f"<tr>{tds}</tr>"
     return f'<table class="dt"><thead><tr>{ths}</tr></thead><tbody>{body}</tbody></table>'
 
@@ -302,7 +311,7 @@ def _hbars(rows: list[tuple[str, int | float, int | float, str]]) -> str:
         outside = f"{int(value)}" if pct < 12 else ""
         parts.append(
             f'<div class="hbr">'
-            f'<span class="hbl">{_e(label)}</span>'
+            f'<span class="hbl">{_esc(label)}</span>'
             f'<div class="hbt"><div class="hbb" style="width:{pct}%;background:{color}">{inside}</div></div>'
             f'<span class="hbv">{outside} {pct}%</span>'
             f'</div>'
@@ -469,16 +478,16 @@ def _html_sidebar() -> str:
         '<div class="bs">ISO 20022 &middot; Pain Analytics</div>',
         '</div>',
     ]
-    for grp_name, items in SIDEBAR_GROUPS:
-        parts.append(f'<div class="sb-grp"><span class="sb-grp-title">{_e(grp_name)}</span>')
+    for grp_name, items in _SIDEBAR_GROUPS:
+        parts.append(f'<div class="sb-grp"><span class="sb-grp-title">{_esc(grp_name)}</span>')
         for item_id, item_label in items:
             if item_id == "overview":
-                parts.append(f'<a href="#overview" class="ov-lnk">{_e(item_label)}</a>')
+                parts.append(f'<a href="#overview" class="ov-lnk">{_esc(item_label)}</a>')
             else:
                 parts.append(
                     f'<a href="#s{item_id}">'
                     f'<span class="ms-tag">{item_id}</span>'
-                    f'{_e(item_label)}</a>'
+                    f'{_esc(item_label)}</a>'
                 )
         parts.append("</div>")
     parts.append("</nav>")
@@ -505,7 +514,7 @@ def _html_footer() -> str:
 # ── Overview section ────────────────────────────────────────────────────────
 
 def _html_overview(con: duckdb.DuckDBPyConnection) -> str:
-    totals = _q(con, """
+    totals = _run_query(con, """
         SELECT COUNT(DISTINCT file_name) AS files,
                COUNT(*) AS processed,
                COUNT(*) FILTER (WHERE validation_status='pass') AS passed,
@@ -518,7 +527,7 @@ def _html_overview(con: duckdb.DuckDBPyConnection) -> str:
     tfail = int(totals.iloc[0]["failed"])    if not totals.empty else 0
     pr    = f"{round(100 * tpass / tp, 1)}%" if tp else "—"
 
-    ms_pf = _q(con, """
+    ms_pf = _run_query(con, """
         SELECT message_set,
                COUNT(*) FILTER (WHERE validation_status='pass') AS passed,
                COUNT(*) FILTER (WHERE validation_status='fail') AS failed,
@@ -527,7 +536,7 @@ def _html_overview(con: duckdb.DuckDBPyConnection) -> str:
         GROUP BY message_set ORDER BY message_set
     """)
 
-    pipeline_tbl = _q(con, """
+    pipeline_tbl = _run_query(con, """
         SELECT message_set,
                COUNT(*) FILTER (WHERE validation_status='pass') AS pass_count,
                COUNT(*) FILTER (WHERE validation_status='fail') AS fail_count,
@@ -584,7 +593,7 @@ def _html_overview(con: duckdb.DuckDBPyConnection) -> str:
 # ── Common per-section blocks ───────────────────────────────────────────────
 
 def _ms_stat_block(con: duckdb.DuckDBPyConnection, ms: str, bdf: pd.DataFrame) -> str:
-    pf = _q(con, f"""
+    pf = _run_query(con, f"""
         SELECT validation_status, COUNT(*) AS cnt
         FROM state.processed_messages WHERE message_set='{ms}' AND domain='pain'
         GROUP BY validation_status
@@ -605,7 +614,7 @@ def _ms_stat_block(con: duckdb.DuckDBPyConnection, ms: str, bdf: pd.DataFrame) -
 
 
 def _error_block(con: duckdb.DuckDBPyConnection, ms: str) -> str:
-    top_el = _q(con, f"""
+    top_el = _run_query(con, f"""
         SELECT REGEXP_EXTRACT(error_detail, '[}}]([A-Za-z]+)', 1) AS element,
                COUNT(*) AS count
         FROM state.processed_messages
@@ -614,7 +623,7 @@ def _error_block(con: duckdb.DuckDBPyConnection, ms: str) -> str:
         ORDER BY count DESC LIMIT 8
     """)
 
-    err_types = _q(con, f"""
+    err_types = _run_query(con, f"""
         SELECT
             CASE
                 WHEN error_detail LIKE '%is not expected%'         THEN 'Element order'
@@ -642,7 +651,7 @@ def _error_block(con: duckdb.DuckDBPyConnection, ms: str) -> str:
     if not err_types.empty:
         for _, r in err_types.iterrows():
             cls   = type_cls.get(str(r["error_type"]), "ec-other")
-            pills += f'<span class="ec {cls}">{_e(r["error_type"])} ({int(r["count"])})</span>'
+            pills += f'<span class="ec {cls}">{_esc(r["error_type"])} ({int(r["count"])})</span>'
     else:
         pills = '<p class="nd">No validation failures.</p>'
 
@@ -660,7 +669,7 @@ def _error_block(con: duckdb.DuckDBPyConnection, ms: str) -> str:
 def _block_payment_init(con: duckdb.DuckDBPyConnection, ms: str) -> str:
     v = f"detail_{ms}"
 
-    ccy_df = _q(con, f"""
+    ccy_df = _run_query(con, f"""
         SELECT COALESCE(currency,'(none)') AS currency,
                COUNT(*) AS transactions,
                ROUND(SUM(amount) FILTER (WHERE amount BETWEEN 0 AND 10000000), 2) AS total_value,
@@ -669,7 +678,7 @@ def _block_payment_init(con: duckdb.DuckDBPyConnection, ms: str) -> str:
         GROUP BY currency ORDER BY transactions DESC LIMIT 12
     """)
 
-    bkt_df = _q(con, f"""
+    bkt_df = _run_query(con, f"""
         SELECT CASE
                    WHEN amount < 1000        THEN '&lt; 1,000'
                    WHEN amount < 10000       THEN '1k – 9,999'
@@ -683,7 +692,7 @@ def _block_payment_init(con: duckdb.DuckDBPyConnection, ms: str) -> str:
         GROUP BY bucket ORDER BY MIN(amount)
     """)
 
-    corr_df = _q(con, f"""
+    corr_df = _run_query(con, f"""
         SELECT COALESCE(debtor_pfx,'??')   AS debtor,
                COALESCE(creditor_pfx,'??') AS creditor,
                COUNT(*) AS count,
@@ -696,7 +705,7 @@ def _block_payment_init(con: duckdb.DuckDBPyConnection, ms: str) -> str:
 
     chg_html = ""
     if ms == "001":
-        chg_df  = _q(con, f"""
+        chg_df  = _run_query(con, f"""
             SELECT COALESCE(charge_bearer,'(absent)') AS charge_bearer,
                    COUNT(*) AS count,
                    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct
@@ -719,19 +728,19 @@ def _block_payment_init(con: duckdb.DuckDBPyConnection, ms: str) -> str:
 def _block_status_report(con: duckdb.DuckDBPyConnection, ms: str) -> str:
     v = f"detail_{ms}"
 
-    grp_df = _q(con, f"""
+    grp_df = _run_query(con, f"""
         SELECT COALESCE(grp_status,'(none)') AS group_status, COUNT(*) AS count
         FROM {v} WHERE grp_status IS NOT NULL
         GROUP BY grp_status ORDER BY count DESC
     """)
 
-    tx_df = _q(con, f"""
+    tx_df = _run_query(con, f"""
         SELECT COALESCE(tx_status,'(none)') AS tx_status, COUNT(*) AS count
         FROM {v} WHERE tx_status IS NOT NULL
         GROUP BY tx_status ORDER BY count DESC
     """)
 
-    rsn_df = _q(con, f"""
+    rsn_df = _run_query(con, f"""
         SELECT COALESCE(reason_code,'(none)') AS reason_code, COUNT(*) AS count
         FROM {v} WHERE reason_code IS NOT NULL
         GROUP BY reason_code ORDER BY count DESC LIMIT 10
@@ -763,21 +772,21 @@ def _block_status_report(con: duckdb.DuckDBPyConnection, ms: str) -> str:
 
 
 def _block_reversal(con: duckdb.DuckDBPyConnection) -> str:
-    rsn_df = _q(con, """
+    rsn_df = _run_query(con, """
         SELECT COALESCE(reversal_reason,'(none)') AS reason, COUNT(*) AS count,
                ROUND(100.0*COUNT(*)/SUM(COUNT(*)) OVER(),1) AS pct
         FROM detail_007 WHERE reversal_reason IS NOT NULL
         GROUP BY reason ORDER BY count DESC
     """)
 
-    ccy_df = _q(con, """
+    ccy_df = _run_query(con, """
         SELECT COALESCE(currency,'(none)') AS currency, COUNT(*) AS count,
                ROUND(SUM(orig_amount) FILTER (WHERE orig_amount BETWEEN 0 AND 10000000),2) AS total
         FROM detail_007 WHERE currency IS NOT NULL
         GROUP BY currency ORDER BY count DESC
     """)
 
-    bkt_df = _q(con, """
+    bkt_df = _run_query(con, """
         SELECT CASE
                    WHEN orig_amount < 1000    THEN '&lt; 1,000'
                    WHEN orig_amount < 10000   THEN '1k – 9,999'
@@ -814,12 +823,12 @@ def _block_reversal(con: duckdb.DuckDBPyConnection) -> str:
 
 
 def _block_mandate_init(con: duckdb.DuckDBPyConnection) -> str:
-    trk_df = _q(con, """
+    trk_df = _run_query(con, """
         SELECT COALESCE(tracking_ind,'(absent)') AS tracking, COUNT(*) AS count,
                ROUND(100.0*COUNT(*)/SUM(COUNT(*)) OVER(),1) AS pct
         FROM detail_009 GROUP BY tracking ORDER BY count DESC
     """)
-    pfx_df = _q(con, """
+    pfx_df = _run_query(con, """
         SELECT COALESCE(creditor_pfx,'??') AS creditor_country, COUNT(*) AS count
         FROM detail_009 WHERE creditor_pfx IS NOT NULL
         GROUP BY creditor_country ORDER BY count DESC LIMIT 10
@@ -835,22 +844,22 @@ def _block_mandate_init(con: duckdb.DuckDBPyConnection) -> str:
 
 
 def _block_reason_codes(con: duckdb.DuckDBPyConnection, ms: str, col: str, title: str) -> str:
-    df = _q(con, f"""
+    df = _run_query(con, f"""
         SELECT COALESCE({col},'(none)') AS reason_code, COUNT(*) AS count,
                ROUND(100.0*COUNT(*)/SUM(COUNT(*)) OVER(),1) AS pct
         FROM detail_{ms} WHERE {col} IS NOT NULL
         GROUP BY reason_code ORDER BY count DESC
     """)
     body = _table(df) if not df.empty else '<p class="nd">No reason codes found.</p>'
-    return f'<div class="sub"><h3>{_e(title)}</h3>{body}</div>'
+    return f'<div class="sub"><h3>{_esc(title)}</h3>{body}</div>'
 
 
 def _block_012(con: duckdb.DuckDBPyConnection) -> str:
-    acc_df = _q(con, """
+    acc_df = _run_query(con, """
         SELECT COALESCE(accepted,'(absent)') AS accepted, COUNT(*) AS count
         FROM detail_012 GROUP BY accepted ORDER BY count DESC
     """)
-    rsn_df = _q(con, """
+    rsn_df = _run_query(con, """
         SELECT COALESCE(rejection_reason,'(none)') AS rejection_reason, COUNT(*) AS count
         FROM detail_012 WHERE rejection_reason IS NOT NULL
         GROUP BY rejection_reason ORDER BY count DESC
@@ -861,8 +870,10 @@ def _block_012(con: duckdb.DuckDBPyConnection) -> str:
     if not acc_df.empty:
         for _, r in acc_df.iterrows():
             v = str(r["accepted"]).lower()
-            if v == "true":   accepted_n = int(r["count"])
-            elif v == "false": rejected_n = int(r["count"])
+            if v == "true":
+                accepted_n = int(r["count"])
+            elif v == "false":
+                rejected_n = int(r["count"])
     total_a = accepted_n + rejected_n or 1
     pp = round(100 * accepted_n / total_a)
     fp = round(100 * rejected_n / total_a)
@@ -888,7 +899,7 @@ def _block_012(con: duckdb.DuckDBPyConnection) -> str:
 
 
 def _block_017(con: duckdb.DuckDBPyConnection) -> str:
-    df = _q(con, "SELECT COUNT(DISTINCT orig_mandate_id) AS unique_mandate_ids FROM detail_017")
+    df = _run_query(con, "SELECT COUNT(DISTINCT orig_mandate_id) AS unique_mandate_ids FROM detail_017")
     n  = int(df.iloc[0]["unique_mandate_ids"]) if not df.empty else 0
     return (
         f'<div class="sub"><h3>Mandate Copy Requests</h3>'
@@ -901,14 +912,14 @@ def _block_017(con: duckdb.DuckDBPyConnection) -> str:
 
 def _html_section(con: duckdb.DuckDBPyConnection, ms: str, bdf: pd.DataFrame) -> str:
     schema = _schema_version(ms)
-    label  = MS_LABELS[ms]
-    color  = MS_COLOR.get(ms, "teal")
+    label  = _MS_LABELS[ms]
+    color  = _MS_COLOR.get(ms, "teal")
 
     header = (
         f'<div class="sh {color}">'
         f'<h2>pain.{ms}</h2>'
-        f'<span class="schema-badge">{_e(schema)}</span>'
-        f'<span class="ms-lbl">{_e(label)}</span>'
+        f'<span class="schema-badge">{_esc(schema)}</span>'
+        f'<span class="ms-lbl">{_esc(label)}</span>'
         f'</div>'
     )
 
@@ -952,16 +963,16 @@ def _html_section(con: duckdb.DuckDBPyConnection, ms: str, bdf: pd.DataFrame) ->
 
 def main() -> None:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    REPORTS.mkdir(exist_ok=True)
-    report_path = REPORTS / f"analytics_report_{ts}.html"
+    _REPORTS.mkdir(exist_ok=True)
+    report_path = _REPORTS / f"analytics_report_{ts}.html"
 
     con = duckdb.connect()
-    con.execute(f"ATTACH '{STATE_DB}' AS state (TYPE sqlite, READ_ONLY)")
+    con.execute(f"ATTACH '{_STATE_DB}' AS state (TYPE sqlite, READ_ONLY)")
 
     dfs: dict[str, tuple[pd.DataFrame, pd.DataFrame]] = {}
 
     print("Parsing XML files:")
-    for ms in MESSAGE_SETS:
+    for ms in _MESSAGE_SETS:
         print(f"  pain.{ms}...", end=" ", flush=True)
         bdf, ddf = _load_ms(ms)
         dfs[ms] = (bdf, ddf)
@@ -974,7 +985,7 @@ def main() -> None:
     print("\nGenerating report sections:")
     parts = [_html_head(), _html_sidebar(), _html_page_header(ts), _html_overview(con)]
 
-    for ms in MESSAGE_SETS:
+    for ms in _MESSAGE_SETS:
         print(f"  pain.{ms}...", flush=True)
         bdf = dfs[ms][0]
         parts.append(_html_section(con, ms, bdf))

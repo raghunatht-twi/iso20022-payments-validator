@@ -17,9 +17,9 @@ from pathlib import Path
 import duckdb
 
 
-_BASE_DIR  = Path(__file__).parent
-STATE_DB   = _BASE_DIR / "state.db"
-REPORT_DIR = _BASE_DIR / "reports"
+_BASE_DIR   = Path(__file__).parent
+_STATE_DB   = _BASE_DIR / "state.db"
+_REPORT_DIR = _BASE_DIR / "reports"
 
 _TW_COLOURS: dict[str, str] = {
     "white":   "#FFFFFF",
@@ -218,7 +218,7 @@ def _query_rule_violations(conn: duckdb.DuckDBPyConnection) -> list[tuple]:
             GROUP BY rule_id, severity
             ORDER BY severity DESC, total_violations DESC
         """).fetchall()
-    except Exception:
+    except duckdb.Error:
         return []
 
 
@@ -350,7 +350,7 @@ def _build_schema_breakdown_rows(rows: list[tuple]) -> str:
     for msg_set, total, processed, pass_c, fail_c, pending, pass_rate in rows:
         pending_cell = (
             f'<span style="color:#CC850A;font-weight:600;">{pending}</span>'
-            if pending > 0 else f'<span style="color:#689E78;">0</span>'
+            if pending > 0 else '<span style="color:#689E78;">0</span>'
         )
         out.append(
             "<tr>"
@@ -825,9 +825,9 @@ def generate_report(
     tampered: list[sqlite3.Row],
     analytics: AnalyticsResult | None = None,
 ) -> Path:
-    REPORT_DIR.mkdir(exist_ok=True)
+    _REPORT_DIR.mkdir(exist_ok=True)
     ts          = datetime.now()
-    report_path = REPORT_DIR / f"reconciliation_{ts.strftime('%Y%m%d_%H%M%S')}.html"
+    report_path = _REPORT_DIR / f"reconciliation_{ts.strftime('%Y%m%d_%H%M%S')}.html"
 
     total_sent    = len(sent)
     n_pass        = sum(1 for s in sent if _reconciliation_status(s, processed) == "pass")
@@ -844,9 +844,6 @@ def generate_report(
         f"{n_unprocessed} message(s) have not yet been processed.</p>"
     )
 
-    n_br_violations = (
-        sum(r[2] for r in analytics.rule_violations) if analytics else 0
-    )
     n_br_errors     = (
         sum(r[2] for r in analytics.rule_violations if r[1] == "ERROR") if analytics else 0
     )
@@ -854,16 +851,17 @@ def generate_report(
         sum(r[2] for r in analytics.rule_violations if r[1] == "WARNING") if analytics else 0
     )
 
-    css_vars = "\n".join(f"  --{k}: {v};" for k, v in _TW_COLOURS.items())
+    _c = _TW_COLOURS
+    css_vars = "\n".join(f"  --{k}: {v};" for k, v in _c.items())
     cards = (
-        _summary_card("Total Sent",        total_sent,    "#003D4F")
-        + _summary_card("Pass",            n_pass,        "#689E78")
-        + _summary_card("Fail → DLQ",      n_fail,        "#F2617A")
-        + _summary_card("Not Processed",   n_unprocessed, "#CC850A")
-        + _summary_card("Duplicates",      n_duplicates,  "#634F7D")
-        + _summary_card("Tampered",        n_tampered,    "#F2617A")
-        + _summary_card("BR Errors",       n_br_errors,   "#F2617A")
-        + _summary_card("BR Warnings",     n_br_warnings, "#CC850A")
+        _summary_card("Total Sent",      total_sent,    _c["teal-dk"])
+        + _summary_card("Pass",          n_pass,        _c["green"])
+        + _summary_card("Fail → DLQ",    n_fail,        _c["coral"])
+        + _summary_card("Not Processed", n_unprocessed, _c["amber"])
+        + _summary_card("Duplicates",    n_duplicates,  _c["plum"])
+        + _summary_card("Tampered",      n_tampered,    _c["coral"])
+        + _summary_card("BR Errors",     n_br_errors,   _c["coral"])
+        + _summary_card("BR Warnings",   n_br_warnings, _c["amber"])
     )
 
     doc = f"""<!DOCTYPE html>
@@ -997,14 +995,14 @@ def generate_report(
 
 
 def main() -> None:
-    if not STATE_DB.exists():
+    if not _STATE_DB.exists():
         print(
-            f"Error: {STATE_DB} not found. Run sender_agent.py and receiver_agent.py first.",
+            f"Error: {_STATE_DB} not found. Run sender_agent.py and receiver_agent.py first.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    conn = sqlite3.connect(STATE_DB)
+    conn = sqlite3.connect(_STATE_DB)
     conn.row_factory = sqlite3.Row
 
     sent = conn.execute(
@@ -1043,7 +1041,7 @@ def main() -> None:
     print(f"Reconciled: {'YES' if n_unprocessed == 0 else 'NO — receiver still catching up'}")
 
     print("Running DuckDB analytics ...")
-    analytics = _run_analytics(STATE_DB)
+    analytics = _run_analytics(_STATE_DB)
     if analytics:
         print(f"  Schema breakdown  : {len(analytics.schema_breakdown)} message sets")
         print(f"  Error patterns    : {len(analytics.error_patterns)} categories")

@@ -21,10 +21,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from kafka import KafkaProducer
 
 
-_BASE_DIR     = Path(__file__).parent
-TEST_DATA_DIR = _BASE_DIR / "test_data"
-SCHEMA_DIR    = _BASE_DIR / "schema"
-_KEYS_DIR     = _BASE_DIR / "keys"
+_BASE_DIR      = Path(__file__).parent
+_TEST_DATA_DIR = _BASE_DIR / "test_data"
+_SCHEMA_DIR    = _BASE_DIR / "schema"
+_KEYS_DIR      = _BASE_DIR / "keys"
 
 _BOOTSTRAP    = "localhost:9092"
 _TOPIC_PREFIX = "iso20022"
@@ -49,15 +49,11 @@ def _topic(domain: str, msg_set: str) -> str:
 
 
 def _tampered_message_id(domain: str, msg_set: str, xml_bytes: bytes) -> str:
-    # Prefix with "tampered-" so the receiver never confuses this with the
-    # legitimate message sent by sender_agent (which hashes the original bytes).
     original_hash = hashlib.sha256(f"{domain}.{msg_set}:".encode() + xml_bytes).hexdigest()
     return f"tampered-{original_hash[:48]}"
 
 
 def _inject_tamper(xml: str) -> str:
-    """Modify the XML content in a way that looks like in-transit tampering."""
-    # Strategy 1: inflate any monetary amount by 10x
     def multiply_amount(m: re.Match) -> str:
         tag, val, close = m.group(1), m.group(2), m.group(3)
         try:
@@ -73,51 +69,51 @@ def _inject_tamper(xml: str) -> str:
         count=1,
     )
 
-    # Strategy 2: if no amount found, swap a BIC or IBAN-like value
     if tampered == xml:
         tampered = re.sub(r'([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)', r'XXXXXXXX', xml, count=1)
 
-    # Strategy 3: fall back to appending a comment — always changes the bytes
     if tampered == xml:
         tampered = xml.rstrip() + "<!-- TAMPERED -->"
 
     return tampered
 
 
+def _spread_files(
+    by_set: dict[str, list[tuple[str, str, Path]]], count: int
+) -> list[tuple[str, str, Path]]:
+    selected: list[tuple[str, str, Path]] = []
+    sets = list(by_set.values())
+    i = 0
+    while len(selected) < count and sets:
+        bucket = sets[i % len(sets)]
+        selected.append(bucket[0])
+        sets[i % len(sets)] = bucket[1:]
+        if not sets[i % len(sets)]:
+            sets.pop(i % len(sets))
+        else:
+            i += 1
+    return selected[:count]
+
+
 def _discover_files(count: int) -> list[tuple[str, str, Path]]:
-    """Return up to `count` XML files spread across domains/message-sets."""
     all_files: list[tuple[str, str, Path]] = []
-    for xml_path in sorted(TEST_DATA_DIR.rglob("*.xml")):
-        parts = xml_path.relative_to(TEST_DATA_DIR).parts
+    for xml_path in sorted(_TEST_DATA_DIR.rglob("*.xml")):
+        parts = xml_path.relative_to(_TEST_DATA_DIR).parts
         if len(parts) == 3:
             all_files.append((parts[0], parts[1], xml_path))
 
     if not all_files:
         return []
 
-    # Pick files spread across different message sets
     by_set: dict[str, list[tuple[str, str, Path]]] = {}
     for domain, msg_set, path in all_files:
-        key = f"{domain}.{msg_set}"
-        by_set.setdefault(key, []).append((domain, msg_set, path))
+        by_set.setdefault(f"{domain}.{msg_set}", []).append((domain, msg_set, path))
 
-    selected: list[tuple[str, str, Path]] = []
-    sets = list(by_set.values())
-    i = 0
-    while len(selected) < count and sets:
-        bucket = sets[i % len(sets)]
-        selected.append(bucket[0])  # first file from each set
-        sets[i % len(sets)] = bucket[1:]
-        if not sets[i % len(sets)]:
-            sets.pop(i % len(sets))
-        else:
-            i += 1
-
-    return selected[:count]
+    return _spread_files(by_set, count)
 
 
 def _schema_name(domain: str, msg_set: str) -> str:
-    xsd_files = sorted((SCHEMA_DIR / domain / msg_set).glob("*.xsd"))
+    xsd_files = sorted((_SCHEMA_DIR / domain / msg_set).glob("*.xsd"))
     return xsd_files[0].name if xsd_files else "unknown.xsd"
 
 
@@ -127,15 +123,13 @@ def main() -> None:
         try:
             count = int(sys.argv[1])
         except ValueError:
-            print(f"Usage: uv run tamper_agent.py [count]", file=sys.stderr)
+            print("Usage: uv run tamper_agent.py [count]", file=sys.stderr)
             sys.exit(1)
 
     private_key = _load_private_key()
-    print(f"Private key loaded — will sign original bytes, then tamper the content.")
-
     files = _discover_files(count)
     if not files:
-        print(f"No XML test files found under {TEST_DATA_DIR}", file=sys.stderr)
+        print(f"No XML test files found under {_TEST_DATA_DIR}", file=sys.stderr)
         sys.exit(1)
 
     producer = KafkaProducer(
@@ -152,10 +146,7 @@ def main() -> None:
         original_bytes = xml_path.read_bytes()
         original_xml   = original_bytes.decode("utf-8", errors="replace")
 
-        # Sign the ORIGINAL bytes — exactly as the legitimate sender would.
-        signature = base64.b64encode(private_key.sign(original_bytes)).decode()
-
-        # Modify the XML AFTER signing — this is what an in-transit attacker would do.
+        signature    = base64.b64encode(private_key.sign(original_bytes)).decode()
         tampered_xml = _inject_tamper(original_xml)
 
         msg_id    = _tampered_message_id(domain, msg_set, original_bytes)

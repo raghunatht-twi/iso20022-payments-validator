@@ -21,10 +21,10 @@ from business_rule_validator import RuleViolation
 from business_rule_validator import validate as _br_validate
 
 
-_BASE_DIR = Path(__file__).parent
-SCHEMA_DIR = _BASE_DIR / "schema"
-TEST_DATA_DIR = _BASE_DIR / "test_data"
-REPORT_DIR = _BASE_DIR / "reports"
+_BASE_DIR     = Path(__file__).parent
+_SCHEMA_DIR   = _BASE_DIR / "schema"
+_TEST_DATA_DIR = _BASE_DIR / "test_data"
+_REPORT_DIR   = _BASE_DIR / "reports"
 
 _MAX_XML_SIZE_BYTES = 10 * 1024 * 1024  # LLM10: resource cap
 _MAX_XML_SIZE_MB = _MAX_XML_SIZE_BYTES // (1024 * 1024)
@@ -185,11 +185,11 @@ def _validate_domain(domain: str) -> None:
 def find_schema(domain: str) -> Path:
     parts = domain.split(".")
     domain_name = parts[0]
-    domain_root = SCHEMA_DIR / domain_name
+    domain_root = _SCHEMA_DIR / domain_name
 
     if not domain_root.is_dir():
         raise FileNotFoundError(
-            f"No schema directory for domain '{domain_name}' found in '{SCHEMA_DIR}'."
+            f"No schema directory for domain '{domain_name}' found in '{_SCHEMA_DIR}'."
         )
 
     if len(parts) >= 2:
@@ -232,7 +232,7 @@ def load_schema(schema_path: Path) -> etree.XMLSchema:
 def find_test_files(domain: str) -> list[Path]:
     parts = domain.split(".")
     domain_name = parts[0]
-    domain_root = TEST_DATA_DIR / domain_name
+    domain_root = _TEST_DATA_DIR / domain_name
 
     if not domain_root.is_dir():
         raise FileNotFoundError(
@@ -255,7 +255,7 @@ def find_test_files(domain: str) -> list[Path]:
 
     # LLM06: verify no file escapes the sandbox via symlink or dotdot component
     for f in files:
-        if not f.resolve().is_relative_to(TEST_DATA_DIR.resolve()):
+        if not f.resolve().is_relative_to(_TEST_DATA_DIR.resolve()):
             raise ValueError("A test file resolves outside the test_data directory.")
 
     if len(files) > _MAX_FILES:  # LLM10: prevent unbounded processing
@@ -402,9 +402,9 @@ def generate_report(
     schema_path: Path,
     results: list[ValidationResult],
 ) -> Path:
-    REPORT_DIR.mkdir(exist_ok=True)
+    _REPORT_DIR.mkdir(exist_ok=True)
     ts = datetime.now()
-    report_path = REPORT_DIR / f"{domain}_{ts.strftime('%Y%m%d_%H%M%S')}_report.html"
+    report_path = _REPORT_DIR / f"{domain}_{ts.strftime('%Y%m%d_%H%M%S')}_report.html"
 
     total = len(results)
     passed = sum(1 for r in results if r.passed)
@@ -419,7 +419,7 @@ def generate_report(
     # Project-relative paths prevent host directory disclosure in the report (LLM02)
     schema_rel = schema_path.relative_to(_BASE_DIR)
     parts = domain.split(".")
-    test_data_dir = TEST_DATA_DIR / parts[0]
+    test_data_dir = _TEST_DATA_DIR / parts[0]
     if len(parts) >= 2:
         test_data_dir = test_data_dir / parts[1]
     domain_dir_rel = test_data_dir.relative_to(_BASE_DIR)

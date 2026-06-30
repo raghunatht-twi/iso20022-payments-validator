@@ -29,10 +29,10 @@ from business_rule_validator import RuleViolation
 from business_rule_validator import validate as _br_validate
 
 
-_BASE_DIR  = Path(__file__).parent
-SCHEMA_DIR = _BASE_DIR / "schema"
-STATE_DB   = _BASE_DIR / "state.db"
-_KEYS_DIR  = _BASE_DIR / "keys"
+_BASE_DIR   = Path(__file__).parent
+_SCHEMA_DIR = _BASE_DIR / "schema"
+_STATE_DB   = _BASE_DIR / "state.db"
+_KEYS_DIR   = _BASE_DIR / "keys"
 
 _BOOTSTRAP      = "localhost:9092"
 _TOPIC_PREFIX   = "iso20022"
@@ -80,8 +80,8 @@ def _verify_signature(public_key: Ed25519PublicKey, xml_content: str, signature_
 
 def _discover_schemas() -> list[tuple[str, str, Path]]:
     results = []
-    for xsd_path in sorted(SCHEMA_DIR.rglob("*.xsd")):
-        parts = xsd_path.relative_to(SCHEMA_DIR).parts
+    for xsd_path in sorted(_SCHEMA_DIR.rglob("*.xsd")):
+        parts = xsd_path.relative_to(_SCHEMA_DIR).parts
         if len(parts) == 3:
             results.append((parts[0], parts[1], xsd_path))
     return results
@@ -99,11 +99,7 @@ def _load_schema(xsd_path: Path) -> etree.XMLSchema | None:
 def _validate(
     xml_content: str, schema: etree.XMLSchema, msg_set: str
 ) -> tuple[bool, str, list[RuleViolation]]:
-    """XSD validation followed by business rule checks.
-
-    Business rules run only when XSD passes.
-    Returns (xsd_and_br_valid, error_summary, all_violations).
-    """
+    """XSD then business-rule validation; BR runs only when XSD passes."""
     try:
         element = etree.fromstring(xml_content.encode(), parser=_SAFE_PARSER)
         if not schema.validate(element):
@@ -122,7 +118,7 @@ def _validate(
 
 
 def _open_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(STATE_DB, check_same_thread=False)
+    conn = sqlite3.connect(_STATE_DB, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rule_violations (
@@ -271,7 +267,8 @@ def _process_message(
         valid, error, violations = False, "Schema unavailable", []
 
     if valid:
-        warn_note = f"  [{len([v for v in violations if v.severity == 'WARNING'])} warning(s)]" if violations else ""
+        n_warnings = sum(1 for v in violations if v.severity == "WARNING")
+        warn_note = f"  [{n_warnings} warning(s)]" if n_warnings else ""
         print(f"  {label} PASS       {file_name}{warn_note}")
         _record_processed(conn, msg_id, domain, msg_set, file_name, "pass", None, None)
     else:
@@ -286,7 +283,6 @@ def _process_message(
     if violations:
         _record_violations(conn, msg_id, msg_set, file_name, violations)
 
-    # Commit offset only after DB write — guarantees idempotency on crash
     consumer.commit()
 
 
@@ -325,8 +321,8 @@ def _run_receiver(
 
 
 def main() -> None:
-    if not STATE_DB.exists():
-        print(f"Error: {STATE_DB} not found. Run sender_agent.py first.", file=sys.stderr)
+    if not _STATE_DB.exists():
+        print(f"Error: {_STATE_DB} not found. Run sender_agent.py first.", file=sys.stderr)
         sys.exit(1)
 
     public_key = _load_public_key()
@@ -337,7 +333,7 @@ def main() -> None:
 
     schemas = _discover_schemas()
     if not schemas:
-        print(f"No XSD schemas found under {SCHEMA_DIR}", file=sys.stderr)
+        print(f"No XSD schemas found under {_SCHEMA_DIR}", file=sys.stderr)
         sys.exit(1)
 
     producer = KafkaProducer(bootstrap_servers=_BOOTSTRAP, acks="all", retries=5)

@@ -6,19 +6,18 @@
 
 from __future__ import annotations
 
-import re
-import sys
 from pathlib import Path
 from typing import Any
 
 import duckdb
+import pandas as pd
 from lxml import etree
 
-NS = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.13"
-NS_MAP = {"p": NS}
-ROOT = Path(__file__).parent
-XML_DIR = ROOT / "test_data" / "pain" / "001"
-STATE_DB = ROOT / "state.db"
+_NS       = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.13"
+_NS_MAP   = {"p": _NS}
+_BASE_DIR = Path(__file__).parent
+_XML_DIR  = _BASE_DIR / "test_data" / "pain" / "001"
+_STATE_DB = _BASE_DIR / "state.db"
 
 _PARSER = etree.XMLParser(
     resolve_entities=False,
@@ -64,11 +63,11 @@ def _parse_xml(path: Path) -> list[dict[str, Any]]:
     file_name = path.name
     category = _file_category(file_name)
 
-    grp = root.find(".//p:GrpHdr", NS_MAP)
-    msg_id = _t(grp.find("p:MsgId", NS_MAP)) if grp is not None else None
-    nb_txs_raw = _t(grp.find("p:NbOfTxs", NS_MAP)) if grp is not None else None
-    ctrl_sum_raw = _t(grp.find("p:CtrlSum", NS_MAP)) if grp is not None else None
-    initg_pty = _t(grp.find(".//p:InitgPty/p:Nm", NS_MAP)) if grp is not None else None
+    grp = root.find(".//p:GrpHdr", _NS_MAP)
+    msg_id = _t(grp.find("p:MsgId", _NS_MAP)) if grp is not None else None
+    nb_txs_raw = _t(grp.find("p:NbOfTxs", _NS_MAP)) if grp is not None else None
+    ctrl_sum_raw = _t(grp.find("p:CtrlSum", _NS_MAP)) if grp is not None else None
+    initg_pty = _t(grp.find(".//p:InitgPty/p:Nm", _NS_MAP)) if grp is not None else None
 
     nb_txs = int(nb_txs_raw) if nb_txs_raw and nb_txs_raw.isdigit() else None
     try:
@@ -76,38 +75,38 @@ def _parse_xml(path: Path) -> list[dict[str, Any]]:
     except ValueError:
         ctrl_sum = None
 
-    for pmt in root.findall(".//p:PmtInf", NS_MAP):
-        pmt_id = _t(pmt.find("p:PmtInfId", NS_MAP))
-        pmt_mtd = _t(pmt.find("p:PmtMtd", NS_MAP))
-        req_date = _t(pmt.find(".//p:ReqdExctnDt/p:Dt", NS_MAP))
+    for pmt in root.findall(".//p:PmtInf", _NS_MAP):
+        pmt_id = _t(pmt.find("p:PmtInfId", _NS_MAP))
+        pmt_mtd = _t(pmt.find("p:PmtMtd", _NS_MAP))
+        req_date = _t(pmt.find(".//p:ReqdExctnDt/p:Dt", _NS_MAP))
 
-        dbtr_nm = _t(pmt.find(".//p:Dbtr/p:Nm", NS_MAP))
-        dbtr_ctry = _t(pmt.find(".//p:Dbtr/p:PstlAdr/p:Ctry", NS_MAP))
-        dbtr_iban = _t(pmt.find(".//p:DbtrAcct/p:Id/p:IBAN", NS_MAP))
-        dbtr_bic = _t(pmt.find(".//p:DbtrAgt/p:FinInstnId/p:BICFI", NS_MAP))
+        dbtr_nm = _t(pmt.find(".//p:Dbtr/p:Nm", _NS_MAP))
+        dbtr_ctry = _t(pmt.find(".//p:Dbtr/p:PstlAdr/p:Ctry", _NS_MAP))
+        dbtr_iban = _t(pmt.find(".//p:DbtrAcct/p:Id/p:IBAN", _NS_MAP))
+        dbtr_bic = _t(pmt.find(".//p:DbtrAgt/p:FinInstnId/p:BICFI", _NS_MAP))
 
-        for tx in pmt.findall(".//p:CdtTrfTxInf", NS_MAP):
-            e2e = _t(tx.find(".//p:PmtId/p:EndToEndId", NS_MAP))
-            instr_id = _t(tx.find(".//p:PmtId/p:InstrId", NS_MAP))
-            uetr = _t(tx.find(".//p:PmtId/p:UETR", NS_MAP))
-            chrg_br = _t(tx.find("p:ChrgBr", NS_MAP))
+        for tx in pmt.findall(".//p:CdtTrfTxInf", _NS_MAP):
+            e2e = _t(tx.find(".//p:PmtId/p:EndToEndId", _NS_MAP))
+            instr_id = _t(tx.find(".//p:PmtId/p:InstrId", _NS_MAP))
+            uetr = _t(tx.find(".//p:PmtId/p:UETR", _NS_MAP))
+            chrg_br = _t(tx.find("p:ChrgBr", _NS_MAP))
 
-            inst_el = tx.find(".//p:Amt/p:InstdAmt", NS_MAP)
-            eqvt_el = tx.find(".//p:Amt/p:EqvtAmt/p:Amt", NS_MAP)
+            inst_el = tx.find(".//p:Amt/p:InstdAmt", _NS_MAP)
+            eqvt_el = tx.find(".//p:Amt/p:EqvtAmt/p:Amt", _NS_MAP)
             amt_el = inst_el if inst_el is not None else eqvt_el
             try:
                 amount = float(amt_el.text) if amt_el is not None and amt_el.text else None
             except ValueError:
                 amount = None
-            ccy = _attr(inst_el, "Ccy") or _t(tx.find(".//p:Amt/p:EqvtAmt/p:CcyOfTrf", NS_MAP))
+            ccy = _attr(inst_el, "Ccy") or _t(tx.find(".//p:Amt/p:EqvtAmt/p:CcyOfTrf", _NS_MAP))
 
-            cdtr_nm = _t(tx.find(".//p:Cdtr/p:Nm", NS_MAP))
-            cdtr_ctry = _t(tx.find(".//p:Cdtr/p:PstlAdr/p:Ctry", NS_MAP))
-            cdtr_iban = _t(tx.find(".//p:CdtrAcct/p:Id/p:IBAN", NS_MAP))
-            cdtr_bic = _t(tx.find(".//p:CdtrAgt/p:FinInstnId/p:BICFI", NS_MAP))
+            cdtr_nm = _t(tx.find(".//p:Cdtr/p:Nm", _NS_MAP))
+            cdtr_ctry = _t(tx.find(".//p:Cdtr/p:PstlAdr/p:Ctry", _NS_MAP))
+            cdtr_iban = _t(tx.find(".//p:CdtrAcct/p:Id/p:IBAN", _NS_MAP))
+            cdtr_bic = _t(tx.find(".//p:CdtrAgt/p:FinInstnId/p:BICFI", _NS_MAP))
 
-            purp = _t(tx.find(".//p:Purp/p:Cd", NS_MAP)) or _t(tx.find(".//p:Purp/p:Prtry", NS_MAP))
-            rmt_ustrd = _t(tx.find(".//p:RmtInf/p:Ustrd", NS_MAP))
+            purp = _t(tx.find(".//p:Purp/p:Cd", _NS_MAP)) or _t(tx.find(".//p:Purp/p:Prtry", _NS_MAP))
+            rmt_ustrd = _t(tx.find(".//p:RmtInf/p:Ustrd", _NS_MAP))
 
             rows.append({
                 "file_name": file_name,
@@ -155,7 +154,7 @@ def _parse_xml(path: Path) -> list[dict[str, Any]]:
 
 def _load_xml_rows() -> list[dict[str, Any]]:
     all_rows: list[dict[str, Any]] = []
-    for xml_path in sorted(XML_DIR.glob("*.xml")):
+    for xml_path in sorted(_XML_DIR.glob("*.xml")):
         all_rows.extend(_parse_xml(xml_path))
     return all_rows
 
@@ -189,11 +188,10 @@ def main() -> None:
 
     con = duckdb.connect()
 
-    import pandas as pd
     df_pain = pd.DataFrame(rows)
     con.register("rows_view", df_pain)
     con.execute("CREATE TABLE pain001 AS SELECT * FROM rows_view")
-    con.execute(f"ATTACH '{STATE_DB}' AS state (TYPE sqlite, READ_ONLY)")
+    con.execute(f"ATTACH '{_STATE_DB}' AS state (TYPE sqlite, READ_ONLY)")
     con.execute("""
         CREATE VIEW pain001_pipeline AS
         SELECT
